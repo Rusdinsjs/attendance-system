@@ -10,6 +10,7 @@ import ReportsPage from '../src/pages/ReportsPage';
 import FaceVerificationPage from '../src/pages/FaceVerificationPage';
 import SettingsPage from '../src/pages/SettingsPage';
 import TransferRequestsPage from '../src/pages/TransferRequestsPage';
+import OfficePage from './pages/OfficePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,6 +44,7 @@ function App() {
             <Route path="users" element={<UsersPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="face-verifications" element={<FaceVerificationPage />} />
+            <Route path="offices" element={<OfficePage />} />
             <Route path="transfer-requests" element={<TransferRequestsPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

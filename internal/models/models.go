@@ -30,23 +30,25 @@ func (f *FaceEmbeddings) Scan(value interface{}) error {
 
 // User represents an employee in the system
 type User struct {
-	ID                     uuid.UUID       `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	EmployeeID             string          `gorm:"uniqueIndex;not null" json:"employee_id"`
-	Name                   string          `gorm:"not null" json:"name"`
-	Email                  string          `gorm:"uniqueIndex;not null" json:"email"`
-	PasswordHash           string          `gorm:"not null" json:"-"`
-	Role                   string          `gorm:"default:employee" json:"role"`
-	AvatarURL              string          `json:"avatar_url,omitempty"`
-	FaceEmbeddings         FaceEmbeddings  `gorm:"type:jsonb" json:"face_embeddings,omitempty"`
-	FaceVerificationStatus string          `gorm:"default:none" json:"face_verification_status"`
-	OfficeLat              float64         `gorm:"not null" json:"office_lat"`
-	OfficeLong             float64         `gorm:"not null" json:"office_long"`
-	AllowedRadius          int             `gorm:"default:50" json:"allowed_radius"`
-	IsActive               bool            `gorm:"default:true" json:"is_active"`
-	CreatedAt              time.Time       `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt              time.Time       `gorm:"autoUpdateTime" json:"updated_at"`
-	Attendances            []Attendance    `gorm:"foreignKey:UserID" json:"attendances,omitempty"`
-	FacePhotos             []FacePhoto     `gorm:"foreignKey:UserID" json:"face_photos,omitempty"`
+	ID                     uuid.UUID      `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	EmployeeID             string         `gorm:"uniqueIndex;not null" json:"employee_id"`
+	Name                   string         `gorm:"not null" json:"name"`
+	Email                  string         `gorm:"uniqueIndex;not null" json:"email"`
+	PasswordHash           string         `gorm:"not null" json:"-"`
+	Role                   string         `gorm:"default:employee" json:"role"`
+	AvatarURL              string         `json:"avatar_url,omitempty"`
+	FaceEmbeddings         FaceEmbeddings `gorm:"type:jsonb" json:"face_embeddings,omitempty"`
+	FaceVerificationStatus string         `gorm:"default:none" json:"face_verification_status"`
+	OfficeID               *uuid.UUID     `gorm:"type:uuid" json:"office_id,omitempty"`
+	OfficeLat              float64        `gorm:"not null" json:"office_lat"`
+	OfficeLong             float64        `gorm:"not null" json:"office_long"`
+	AllowedRadius          int            `gorm:"default:50" json:"allowed_radius"`
+	IsActive               bool           `gorm:"default:true" json:"is_active"`
+	CreatedAt              time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt              time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	Attendances            []Attendance   `gorm:"foreignKey:UserID" json:"attendances,omitempty"`
+	FacePhotos             []FacePhoto    `gorm:"foreignKey:UserID" json:"face_photos,omitempty"`
+	Office                 *Office        `gorm:"foreignKey:OfficeID" json:"office,omitempty"`
 }
 
 // Attendance represents a check-in/check-out record

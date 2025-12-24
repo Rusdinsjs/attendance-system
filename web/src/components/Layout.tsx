@@ -1,13 +1,14 @@
 // Main Layout with Sidebar
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { LayoutDashboard, Users, FileText, LogOut, Menu, X, UserCheck, MapPinned, Settings } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, LogOut, Menu, X, UserCheck, MapPinned, Settings, Building } from 'lucide-react';
 import { useState } from 'react';
 
 const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/users', icon: Users, label: 'Users' },
     { to: '/face-verifications', icon: UserCheck, label: 'Verifikasi Wajah' },
+    { to: '/offices', icon: Building, label: 'Lokasi Kantor' },
     { to: '/transfer-requests', icon: MapPinned, label: 'Pindah Lokasi' },
     { to: '/reports', icon: FileText, label: 'Reports' },
     { to: '/settings', icon: Settings, label: 'Pengaturan' },
