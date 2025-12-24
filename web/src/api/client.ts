@@ -78,9 +78,25 @@ export const adminAPI = {
         apiClient.post(`/admin/transfer-requests/${id}/approve`),
     rejectTransferRequest: (id: string, note?: string) =>
         apiClient.post(`/admin/transfer-requests/${id}/reject`, { admin_note: note }),
+
+    // Offices
+    getOffices: () => apiClient.get('/admin/offices'),
+    createOffice: (data: Partial<Office>) => apiClient.post('/admin/offices', data),
+    updateOffice: (id: string, data: Partial<Office>) => apiClient.put(`/admin/offices/${id}`, data),
+    deleteOffice: (id: string) => apiClient.delete(`/admin/offices/${id}`),
 };
 
 // Types
+export interface Office {
+    id: string;
+    name: string;
+    address?: string;
+    latitude: number;
+    longitude: number;
+    radius: number;
+    is_active: boolean;
+}
+
 export interface User {
     id: string;
     employee_id: string;

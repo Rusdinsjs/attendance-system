@@ -100,6 +100,10 @@ func main() {
 	transferRepo := repository.NewTransferRequestRepository(db)
 	transferHandler := handlers.NewTransferRequestHandler(transferRepo, userRepo)
 
+	// Office Management
+	officeRepo := repository.NewOfficeRepository(db)
+	officeHandler := handlers.NewOfficeHandler(officeRepo)
+
 	// Setup Gin router
 	router := gin.Default()
 
@@ -119,8 +123,8 @@ func main() {
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status":    "healthy",
-			"timestamp": time.Now().UTC(),
+			"status":     "healthy",
+			"timestamp":  time.Now().UTC(),
 			"ws_clients": wsHub.GetConnectedCount(),
 		})
 	})
@@ -189,7 +193,16 @@ func main() {
 				admin.GET("/transfer-requests", transferHandler.GetPendingRequests)
 				admin.POST("/transfer-requests/:id/approve", transferHandler.ApproveRequest)
 				admin.POST("/transfer-requests/:id/reject", transferHandler.RejectRequest)
+
+				// Office management routes
+				admin.GET("/offices", officeHandler.GetAllOffices) // Can be public if needed
+				admin.POST("/offices", officeHandler.CreateOffice)
+				admin.PUT("/offices/:id", officeHandler.UpdateOffice)
+				admin.DELETE("/offices/:id", officeHandler.DeleteOffice)
 			}
+
+			// Public/Employee Office routes
+			protected.GET("/offices", officeHandler.GetAllOffices)
 		}
 	}
 

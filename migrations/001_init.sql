@@ -75,7 +75,7 @@ VALUES (
     'ADMIN001',
     'System Admin',
     'admin@attendance.local',
-    '$2a$10$N9qo8uLOickgx2ZMRZoMy.MqrqA9WFj9GhOxZ5H8WdxBvIBFfVQye',  -- bcrypt hash of 'admin123'
+    '$2a$10$z2Nse8u5LFBf8UAOcAfMF.zYzgE59/E5xc99xluNTnhwxVtf5R8ha',  -- bcrypt hash of 'admin123'
     'admin',
     -6.200000,
     106.816666
