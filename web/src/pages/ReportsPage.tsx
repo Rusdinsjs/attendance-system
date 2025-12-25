@@ -55,12 +55,12 @@ export default function ReportsPage() {
             {/* Header */}
             <div className="flex items-center justify-between mb-8">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900">Laporan Kehadiran</h1>
-                    <p className="text-slate-500 mt-1">Export dan analisis data kehadiran</p>
+                    <h1 className="text-2xl font-bold text-white">Laporan Kehadiran</h1>
+                    <p className="text-slate-400 mt-1">Export dan analisis data kehadiran</p>
                 </div>
                 <button
                     onClick={exportToCSV}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition"
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition shadow-lg shadow-green-900/20"
                 >
                     <Download size={18} />
                     Export CSV
@@ -68,26 +68,26 @@ export default function ReportsPage() {
             </div>
 
             {/* Filters */}
-            <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100 mb-6">
+            <div className="bg-slate-900 rounded-xl p-6 shadow-lg border border-slate-800 mb-6">
                 <div className="flex items-center gap-4 flex-wrap">
                     <div className="flex items-center gap-2">
                         <Calendar size={18} className="text-slate-400" />
-                        <span className="text-sm text-slate-600">Tanggal:</span>
+                        <span className="text-sm text-slate-400">Tanggal:</span>
                     </div>
                     <input
                         type="date"
                         value={dateRange.start}
                         onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                        className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                        className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white appearance-none"
                     />
-                    <span className="text-slate-400">—</span>
+                    <span className="text-slate-500">—</span>
                     <input
                         type="date"
                         value={dateRange.end}
                         onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                        className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                        className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white appearance-none"
                     />
-                    <button className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition">
+                    <button className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition border border-slate-700">
                         <Filter size={16} />
                         Filter
                     </button>
@@ -96,69 +96,69 @@ export default function ReportsPage() {
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
-                    <p className="text-sm text-slate-500">Total Kehadiran</p>
-                    <p className="text-2xl font-bold text-slate-900 mt-1">{attendances?.length || 0}</p>
+                <div className="bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-800">
+                    <p className="text-sm text-slate-400">Total Kehadiran</p>
+                    <p className="text-2xl font-bold text-white mt-1">{attendances?.length || 0}</p>
                 </div>
-                <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
-                    <p className="text-sm text-slate-500">Tepat Waktu</p>
-                    <p className="text-2xl font-bold text-green-600 mt-1">
+                <div className="bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-800">
+                    <p className="text-sm text-slate-400">Tepat Waktu</p>
+                    <p className="text-2xl font-bold text-emerald-400 mt-1">
                         {attendances?.filter((a: Attendance) => a.check_in_time && !a.is_late)?.length || 0}
                     </p>
                 </div>
-                <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
-                    <p className="text-sm text-slate-500">Terlambat</p>
-                    <p className="text-2xl font-bold text-amber-600 mt-1">
+                <div className="bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-800">
+                    <p className="text-sm text-slate-400">Terlambat</p>
+                    <p className="text-2xl font-bold text-amber-400 mt-1">
                         {attendances?.filter((a: Attendance) => a.is_late)?.length || 0}
                     </p>
                 </div>
             </div>
 
             {/* Data Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden">
                 {isLoading ? (
-                    <div className="p-8 text-center text-slate-500">Loading...</div>
+                    <div className="p-8 text-center text-slate-400">Loading...</div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-slate-50">
+                            <thead className="bg-slate-950/50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Tanggal</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Nama</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Check In</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Check Out</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Durasi</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Tanggal</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Nama</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Check In</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Check Out</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Durasi</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Status</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody className="divide-y divide-slate-800">
                                 {attendances?.map((a: Attendance) => {
                                     const duration = a.check_in_time && a.check_out_time
                                         ? Math.round((new Date(a.check_out_time).getTime() - new Date(a.check_in_time).getTime()) / 3600000 * 10) / 10
                                         : null;
 
                                     return (
-                                        <tr key={a.id} className="hover:bg-slate-50">
-                                            <td className="px-6 py-4 whitespace-nowrap text-slate-600">
+                                        <tr key={a.id} className="hover:bg-slate-800/50 transition-colors">
+                                            <td className="px-6 py-4 whitespace-nowrap text-slate-400">
                                                 {formatDate(a.check_in_time)}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-900">
+                                            <td className="px-6 py-4 whitespace-nowrap font-medium text-white">
                                                 {a.user?.name || a.user_name || 'Unknown'}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-slate-600">
+                                            <td className="px-6 py-4 whitespace-nowrap text-slate-400">
                                                 {formatTime(a.check_in_time)}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-slate-600">
+                                            <td className="px-6 py-4 whitespace-nowrap text-slate-400">
                                                 {formatTime(a.check_out_time)}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-slate-600">
+                                            <td className="px-6 py-4 whitespace-nowrap text-slate-400">
                                                 {duration ? `${duration} jam` : '-'}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 {a.is_late ? (
-                                                    <span className="px-2 py-1 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">Terlambat</span>
+                                                    <span className="px-2 py-1 text-xs font-medium bg-amber-500/10 text-amber-500 rounded-full border border-amber-500/20">Terlambat</span>
                                                 ) : (
-                                                    <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">Tepat Waktu</span>
+                                                    <span className="px-2 py-1 text-xs font-medium bg-emerald-500/10 text-emerald-500 rounded-full border border-emerald-500/20">Tepat Waktu</span>
                                                 )}
                                             </td>
                                         </tr>

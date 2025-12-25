@@ -95,11 +95,11 @@ const OfficePage: React.FC = () => {
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <Building className="w-8 h-8 text-blue-600" />
+                    <h1 className="text-2xl font-bold flex items-center gap-2 text-white">
+                        <Building className="w-8 h-8 text-blue-500" />
                         Lokasi Kantor
                     </h1>
-                    <p className="text-gray-500">Kelola daftar lokasi kantor untuk absensi</p>
+                    <p className="text-slate-400">Kelola daftar lokasi kantor untuk absensi</p>
                 </div>
                 <button
                     onClick={() => {
@@ -107,7 +107,7 @@ const OfficePage: React.FC = () => {
                         setFormData({ name: '', address: '', latitude: -6.2, longitude: 106.8, radius: 50 });
                         setShowModal(true);
                     }}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors"
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20"
                 >
                     <Plus className="w-5 h-5" />
                     Tambah Kantor
@@ -116,35 +116,35 @@ const OfficePage: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {offices.map((office) => (
-                    <div key={office.id} className="bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition-shadow">
+                    <div key={office.id} className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 p-6 hover:shadow-xl hover:border-slate-700 transition-all group">
                         <div className="flex justify-between items-start mb-4">
-                            <div className="p-3 bg-blue-50 rounded-lg">
-                                <MapPin className="w-6 h-6 text-blue-600" />
+                            <div className="p-3 bg-blue-500/10 rounded-lg group-hover:bg-blue-500/20 transition-colors">
+                                <MapPin className="w-6 h-6 text-blue-500" />
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => handleEdit(office)} className="p-2 hover:bg-gray-100 rounded-full text-gray-600">
+                                <button onClick={() => handleEdit(office)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors">
                                     <Edit2 className="w-4 h-4" />
                                 </button>
-                                <button onClick={() => handleDelete(office.id)} className="p-2 hover:bg-red-50 rounded-full text-red-600">
+                                <button onClick={() => handleDelete(office.id)} className="p-2 hover:bg-red-900/30 rounded-full text-slate-400 hover:text-red-400 transition-colors">
                                     <Trash2 className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
-                        <h3 className="font-semibold text-lg mb-1">{office.name}</h3>
-                        <p className="text-gray-500 text-sm mb-4 h-10 line-clamp-2">{office.address || 'Alamat tidak tersedia'}</p>
+                        <h3 className="font-semibold text-lg mb-1 text-white">{office.name}</h3>
+                        <p className="text-slate-400 text-sm mb-4 h-10 line-clamp-2">{office.address || 'Alamat tidak tersedia'}</p>
 
-                        <div className="space-y-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                        <div className="space-y-2 text-sm text-slate-400 bg-slate-950 p-3 rounded-lg border border-slate-800">
                             <div className="flex justify-between">
                                 <span>Latitude:</span>
-                                <span className="font-mono">{office.latitude}</span>
+                                <span className="font-mono text-slate-300">{office.latitude}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span>Longitude:</span>
-                                <span className="font-mono">{office.longitude}</span>
+                                <span className="font-mono text-slate-300">{office.longitude}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span>Radius:</span>
-                                <span className="font-medium">{office.radius}m</span>
+                                <span className="font-medium text-blue-400">{office.radius}m</span>
                             </div>
                         </div>
                     </div>
@@ -152,34 +152,34 @@ const OfficePage: React.FC = () => {
             </div>
 
             {offices.length === 0 && (
-                <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                    <Building className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                    <p className="text-gray-500">Belum ada data kantor</p>
+                <div className="text-center py-12 bg-slate-900/50 rounded-xl border border-dashed border-slate-800">
+                    <Building className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                    <p className="text-slate-500">Belum ada data kantor</p>
                 </div>
             )}
 
             {/* Modal */}
             {showModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-                        <h2 className="text-xl font-bold mb-4">
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm transition-all">
+                    <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-md p-6 border border-slate-800 animate-in fade-in zoom-in-95 duration-200">
+                        <h2 className="text-xl font-bold mb-4 text-white">
                             {editingOffice ? 'Edit Kantor' : 'Tambah Kantor Baru'}
                         </h2>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Nama Kantor</label>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">Nama Kantor</label>
                                 <input
                                     type="text"
                                     required
-                                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-white placeholder-slate-600"
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Alamat</label>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">Alamat</label>
                                 <textarea
-                                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-white placeholder-slate-600"
                                     rows={2}
                                     value={formData.address}
                                     onChange={e => setFormData({ ...formData, address: e.target.value })}
@@ -187,50 +187,50 @@ const OfficePage: React.FC = () => {
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Latitude</label>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">Latitude</label>
                                     <input
                                         type="number"
                                         step="any"
                                         required
-                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-white placeholder-slate-600"
                                         value={formData.latitude}
                                         onChange={e => setFormData({ ...formData, latitude: parseFloat(e.target.value) })}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Longitude</label>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">Longitude</label>
                                     <input
                                         type="number"
                                         step="any"
                                         required
-                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-white placeholder-slate-600"
                                         value={formData.longitude}
                                         onChange={e => setFormData({ ...formData, longitude: parseFloat(e.target.value) })}
                                     />
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Radius Absensi (meter)</label>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">Radius Absensi (meter)</label>
                                 <input
                                     type="number"
                                     required
                                     min="10"
-                                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-white placeholder-slate-600"
                                     value={formData.radius}
                                     onChange={e => setFormData({ ...formData, radius: parseInt(e.target.value) })}
                                 />
                             </div>
-                            <div className="flex gap-3 mt-6">
+                            <div className="flex gap-3 mt-6 pt-4 border-t border-slate-800">
                                 <button
                                     type="button"
                                     onClick={() => setShowModal(false)}
-                                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                                    className="flex-1 px-4 py-2 text-slate-400 bg-slate-800 rounded-lg hover:bg-slate-700 hover:text-white transition-colors"
                                 >
                                     Batal
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                                    className="flex-1 px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-lg shadow-blue-900/20"
                                 >
                                     Simpan
                                 </button>

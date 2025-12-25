@@ -17,6 +17,8 @@ import (
 // UserHandler handles user-related endpoints
 type UserHandler struct {
 	userRepo          *repository.UserRepository
+	employeeRepo      *repository.EmployeeRepository
+	officeRepo        *repository.OfficeRepository
 	defaultOfficeLat  float64
 	defaultOfficeLong float64
 }
@@ -24,14 +26,19 @@ type UserHandler struct {
 // NewUserHandler creates a new user handler
 func NewUserHandler(
 	userRepo *repository.UserRepository,
+	employeeRepo *repository.EmployeeRepository,
+	officeRepo *repository.OfficeRepository,
 	defaultOfficeLat, defaultOfficeLong float64,
 ) *UserHandler {
 	return &UserHandler{
 		userRepo:          userRepo,
+		employeeRepo:      employeeRepo,
+		officeRepo:        officeRepo,
 		defaultOfficeLat:  defaultOfficeLat,
 		defaultOfficeLong: defaultOfficeLong,
 	}
 }
+
 
 // UpdateFaceEmbeddingsRequest represents the face embeddings update payload
 type UpdateFaceEmbeddingsRequest struct {
@@ -194,6 +201,7 @@ type CreateUserRequest struct {
 	Email      string `json:"email" binding:"required,email"`
 	Password   string `json:"password" binding:"required,min=6"`
 	Role       string `json:"role" binding:"required,oneof=admin hr employee"`
+	OfficeID   string `json:"office_id"`
 }
 
 // CreateUser creates a new user (admin only)
@@ -212,11 +220,24 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	// Check if employee ID already exists
-	existingEmp, _ := h.userRepo.FindByEmployeeID(c.Request.Context(), req.EmployeeID)
-	if existingEmp != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "Employee ID already registered"})
+	// Check if employee ID already exists in USERS table
+	existingUserEmp, _ := h.userRepo.FindByEmployeeID(c.Request.Context(), req.EmployeeID)
+	if existingUserEmp != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "Employee ID already linked to a user account"})
 		return
+	}
+
+	// If role is employee, validate against Employee Master Data
+	if req.Role == "employee" {
+		employee, err := h.employeeRepo.FindByNIK(c.Request.Context(), req.EmployeeID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Employee ID not found in Master Data. Please create Employee first."})
+			return
+		}
+		if employee.UserID != nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "Employee already has a linked User account"})
+			return
+		}
 	}
 
 	// Hash password
@@ -226,17 +247,42 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
+	// Set default office coordinates
+	officeLat := h.defaultOfficeLat
+	officeLong := h.defaultOfficeLong
+	allowedRadius := 50
+	var officeID *uuid.UUID
+
+	// If office_id provided, get office coordinates
+	if req.OfficeID != "" {
+		officeUUID, err := uuid.Parse(req.OfficeID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid office ID"})
+			return
+		}
+		office, err := h.officeRepo.FindByID(c.Request.Context(), officeUUID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Office not found"})
+			return
+		}
+		officeID = &officeUUID
+		officeLat = office.Latitude
+		officeLong = office.Longitude
+		allowedRadius = office.Radius
+	}
+
 	// Create user
 	user := &models.User{
-		EmployeeID:   req.EmployeeID,
-		Name:         req.Name,
-		Email:        req.Email,
-		PasswordHash: string(hashedPassword),
-		Role:         req.Role,
-		OfficeLat:    h.defaultOfficeLat,
-		OfficeLong:   h.defaultOfficeLong,
-		AllowedRadius: 50, // Default radius
-		IsActive:     true,
+		EmployeeID:    req.EmployeeID,
+		Name:          req.Name,
+		Email:         req.Email,
+		PasswordHash:  string(hashedPassword),
+		Role:          req.Role,
+		OfficeID:      officeID,
+		OfficeLat:     officeLat,
+		OfficeLong:    officeLong,
+		AllowedRadius: allowedRadius,
+		IsActive:      true,
 	}
 
 	if err := h.userRepo.Create(c.Request.Context(), user); err != nil {
@@ -244,8 +290,27 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
+	// Link Employee record to this new User
+	if req.Role == "employee" {
+		employee, _ := h.employeeRepo.FindByNIK(c.Request.Context(), req.EmployeeID)
+		if employee != nil {
+			employee.UserID = &user.ID
+			if err := h.employeeRepo.Update(c.Request.Context(), employee); err != nil {
+				// Log error but don't fail the request since user is created
+				fmt.Printf("Failed to link employee to user: %v\n", err)
+			}
+		}
+	}
+
+	// Preload office for response
+	if user.OfficeID != nil {
+		office, _ := h.officeRepo.FindByID(c.Request.Context(), *user.OfficeID)
+		user.Office = office
+	}
+
 	c.JSON(http.StatusCreated, user)
 }
+
 
 // UpdateUserRequest represents update user payload
 type UpdateUserRequest struct {
@@ -254,6 +319,7 @@ type UpdateUserRequest struct {
 	Role     string `json:"role" binding:"omitempty,oneof=admin hr employee"`
 	Password string `json:"password" binding:"omitempty,min=6"`
 	IsActive *bool  `json:"is_active"`
+	OfficeID string `json:"office_id"`
 }
 
 // UpdateUser updates a user (admin only)
@@ -301,6 +367,23 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		}
 		user.PasswordHash = string(hashedPassword)
 	}
+	// Handle office change
+	if req.OfficeID != "" {
+		officeUUID, err := uuid.Parse(req.OfficeID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid office ID"})
+			return
+		}
+		office, err := h.officeRepo.FindByID(c.Request.Context(), officeUUID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Office not found"})
+			return
+		}
+		user.OfficeID = &officeUUID
+		user.OfficeLat = office.Latitude
+		user.OfficeLong = office.Longitude
+		user.AllowedRadius = office.Radius
+	}
 
 	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
 		// Simplify error handling for now
@@ -308,8 +391,15 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
+	// Preload office for response
+	if user.OfficeID != nil {
+		office, _ := h.officeRepo.FindByID(c.Request.Context(), *user.OfficeID)
+		user.Office = office
+	}
+
 	c.JSON(http.StatusOK, user)
 }
+
 
 // DeleteUser deletes a user (admin only)
 // DELETE /api/admin/users/:id

@@ -11,6 +11,9 @@ import FaceVerificationPage from '../src/pages/FaceVerificationPage';
 import SettingsPage from '../src/pages/SettingsPage';
 import TransferRequestsPage from '../src/pages/TransferRequestsPage';
 import OfficePage from './pages/OfficePage';
+import KioskPage from './pages/KioskPage';
+import KioskManagementPage from './pages/admin/KioskManagementPage';
+import EmployeePage from './pages/EmployeePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +35,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/kiosk" element={<KioskPage />} />
           <Route
             path="/"
             element={
@@ -45,8 +49,10 @@ function App() {
             <Route path="reports" element={<ReportsPage />} />
             <Route path="face-verifications" element={<FaceVerificationPage />} />
             <Route path="offices" element={<OfficePage />} />
+            <Route path="kiosks" element={<KioskManagementPage />} />
             <Route path="transfer-requests" element={<TransferRequestsPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="employees" element={<EmployeePage />} />
           </Route>
         </Routes>
       </BrowserRouter>

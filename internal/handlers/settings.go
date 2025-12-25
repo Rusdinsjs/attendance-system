@@ -1,7 +1,11 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/attendance-system/internal/models"
 	"github.com/attendance-system/internal/repository"
@@ -80,4 +84,50 @@ func (h *SettingsHandler) GetSetting(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, setting)
+}
+
+// UploadLogo handles company logo upload
+// POST /api/admin/settings/logo
+func (h *SettingsHandler) UploadLogo(c *gin.Context) {
+	// Get file from request
+	file, err := c.FormFile("logo")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+		return
+	}
+
+	// Ensure uploads directory exists
+	uploadDir := "uploads/settings"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create upload directory"})
+		return
+	}
+
+	// Generate filename: logo_timestamp.ext
+	ext := filepath.Ext(file.Filename)
+	filename := fmt.Sprintf("company_logo_%d%s", time.Now().Unix(), ext)
+	savePath := filepath.Join(uploadDir, filename)
+
+	// Save file
+	if err := c.SaveUploadedFile(file, savePath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
+		return
+	}
+
+	// Update setting
+	logoURL := "/uploads/settings/" + filename
+	setting := &models.Setting{
+		Key:   "company_logo",
+		Value: logoURL,
+	}
+
+	if err := h.settingsRepo.Upsert(c.Request.Context(), setting); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update logo setting"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Logo uploaded successfully",
+		"logo_url": logoURL,
+	})
 }

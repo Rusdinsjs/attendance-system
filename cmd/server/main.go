@@ -70,6 +70,9 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	attendanceRepo := repository.NewAttendanceRepository(db)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
+	officeRepo := repository.NewOfficeRepository(db)
+	employeeRepo := repository.NewEmployeeRepository(db)
+
 
 	// Initialize WebSocket hub
 	wsHub := handlers.NewWebSocketHub()
@@ -85,6 +88,8 @@ func main() {
 	)
 	userHandler := handlers.NewUserHandler(
 		userRepo,
+		employeeRepo,
+		officeRepo,
 		cfg.Office.DefaultLat,
 		cfg.Office.DefaultLong,
 	)
@@ -101,8 +106,14 @@ func main() {
 	transferHandler := handlers.NewTransferRequestHandler(transferRepo, userRepo)
 
 	// Office Management
-	officeRepo := repository.NewOfficeRepository(db)
 	officeHandler := handlers.NewOfficeHandler(officeRepo)
+	
+	// Employee Management
+	employeeHandler := handlers.NewEmployeeHandler(employeeRepo, userRepo)
+
+	// Kiosk Attendance
+	kioskRepo := repository.NewKioskRepository(db)
+	kioskHandler := handlers.NewKioskHandler(userRepo, attendanceRepo, settingsRepo, kioskRepo, wsHub)
 
 	// Setup Gin router
 	router := gin.Default()
@@ -139,6 +150,18 @@ func main() {
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/refresh", authHandler.Refresh)
 			auth.POST("/logout", authHandler.Logout)
+		}
+
+		// Kiosk routes (public, no JWT required)
+		kiosk := api.Group("/kiosk")
+		{
+			kiosk.POST("/scan", kioskHandler.ScanQR)
+			kiosk.POST("/verify-face", kioskHandler.VerifyFace)
+			kiosk.POST("/check-in", kioskHandler.KioskCheckIn)
+			kiosk.POST("/check-out", kioskHandler.KioskCheckOut)
+			kiosk.GET("/status/:employee_id", kioskHandler.GetKioskStatus)
+			kiosk.POST("/admin-unlock", kioskHandler.AdminUnlock)
+			kiosk.GET("/settings", kioskHandler.GetKioskSettings)
 		}
 
 		// Protected routes
@@ -188,6 +211,7 @@ func main() {
 				admin.GET("/settings", settingsHandler.GetAllSettings)
 				admin.GET("/settings/:key", settingsHandler.GetSetting)
 				admin.PUT("/settings/:key", settingsHandler.UpdateSetting)
+				admin.POST("/settings/logo", settingsHandler.UploadLogo)
 
 				// Transfer request admin routes
 				admin.GET("/transfer-requests", transferHandler.GetPendingRequests)
@@ -199,6 +223,21 @@ func main() {
 				admin.POST("/offices", officeHandler.CreateOffice)
 				admin.PUT("/offices/:id", officeHandler.UpdateOffice)
 				admin.DELETE("/offices/:id", officeHandler.DeleteOffice)
+
+				// Kiosk routes
+				admin.GET("/kiosks", kioskHandler.GetAllKiosks)
+				admin.POST("/kiosks", kioskHandler.CreateKiosk)
+				admin.PUT("/kiosks/:id", kioskHandler.UpdateKiosk)
+				admin.DELETE("/kiosks/:id", kioskHandler.DeleteKiosk)
+
+				// Employee routes
+				admin.GET("/employees", employeeHandler.GetAllEmployees)
+				admin.POST("/employees", employeeHandler.CreateEmployee)
+				admin.GET("/employees/:id", employeeHandler.GetEmployee)
+				admin.PUT("/employees/:id", employeeHandler.UpdateEmployee)
+				admin.DELETE("/employees/:id", employeeHandler.DeleteEmployee)
+				admin.POST("/employees/:id/photo", employeeHandler.UploadPhoto)
+				admin.POST("/employees/import", employeeHandler.ImportEmployees)
 			}
 
 			// Public/Employee Office routes
@@ -208,6 +247,7 @@ func main() {
 
 	// WebSocket route
 	router.GET("/ws/dashboard", wsHub.HandleWebSocket)
+
 
 	// Start server
 	srv := &http.Server{

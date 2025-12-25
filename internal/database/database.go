@@ -53,6 +53,13 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Attendance{},
 		&models.RefreshToken{},
 		&models.Office{},
+		&models.FacePhoto{},
+		&models.Setting{},
+		&models.OfficeTransferRequest{},
+		&models.Kiosk{},
+		&models.Employee{},
+		&models.WorkExperience{},
+		&models.EmployeeEvaluation{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)

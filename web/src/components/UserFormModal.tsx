@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Save, AlertCircle, Camera } from 'lucide-react';
-import type { User, CreateUserRequest, UpdateUserRequest } from '../api/client';
+import { adminAPI, employeeAPI, type User, type CreateUserRequest, type UpdateUserRequest, type Office, type Employee } from '../api/client';
+
 
 interface UserFormModalProps {
     isOpen: boolean;
@@ -18,11 +19,30 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
     const [role, setRole] = useState<'admin' | 'hr' | 'employee'>('employee');
     const [isActive, setIsActive] = useState(true);
     const [error, setError] = useState('');
+    const [officeId, setOfficeId] = useState<string>('');
+    const [offices, setOffices] = useState<Office[]>([]);
+    const [employees, setEmployees] = useState<Employee[]>([]);
+    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(''); // For the select dropdown value
 
     // Avatar state
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string>('');
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Fetch offices when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            Promise.all([
+                adminAPI.getOffices(),
+                employeeAPI.getEmployees()
+            ]).then(([officeRes, empRes]) => {
+                setOffices(officeRes.data.offices || []);
+                // Filter employees who don't have a user account yet (optional, or just show all)
+                // Ideally backend should provide a filtered list, but for now show all active employees
+                setEmployees(empRes.data.employees || []);
+            }).catch(err => console.error('Failed to fetch data:', err));
+        }
+    }, [isOpen]);
 
     useEffect(() => {
         if (user) {
@@ -33,6 +53,7 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
             setIsActive(user.is_active);
             setPassword('');
             setPreviewUrl(user.avatar_url ? user.avatar_url : '');
+            setOfficeId(user.office_id || '');
         } else {
             setName('');
             setEmployeeId('');
@@ -41,10 +62,13 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
             setIsActive(true);
             setPassword('');
             setPreviewUrl('');
+            setOfficeId('');
+            setSelectedEmployeeId('');
         }
         setAvatarFile(null);
         setError('');
     }, [user, isOpen]);
+
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -66,7 +90,11 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
                     email,
                     role,
                     is_active: isActive,
+                    office_id: officeId || undefined,
                 };
+                // If updating an employee user, ensure employee_id is not changed or handled correctly
+                // Generally ID shouldn't change.
+
                 if (password) {
                     data.password = password;
                 }
@@ -77,12 +105,17 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
                     setError('Password wajib diisi untuk user baru');
                     return;
                 }
+
+                // If role is employee, employeeId comes from selection, name is auto-filled
+                // Validation happens on backend too
+
                 const data: CreateUserRequest = {
                     employee_id: employeeId,
                     name,
                     email,
                     password,
                     role,
+                    office_id: officeId || undefined,
                 };
                 await onSubmit(data, avatarFile);
             }
@@ -93,19 +126,20 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
         }
     };
 
+
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm transition-all">
+            <div className="bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] overflow-y-auto border border-slate-800 animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
-                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-                    <h2 className="text-lg font-semibold text-slate-800">
+                <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+                    <h2 className="text-lg font-semibold text-white">
                         {user ? 'Edit User' : 'Tambah User Baru'}
                     </h2>
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-slate-200 rounded-full transition text-slate-500 hover:text-slate-700"
+                        className="p-2 hover:bg-slate-800 rounded-full transition text-slate-400 hover:text-white"
                     >
                         <X size={20} />
                     </button>
@@ -114,7 +148,7 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
                 {/* Body */}
                 <div className="p-6">
                     {error && (
-                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+                        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400 text-sm">
                             <AlertCircle size={16} />
                             {error}
                         </div>
@@ -124,19 +158,19 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
                         {/* Avatar Upload */}
                         <div className="flex flex-col items-center mb-6">
                             <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                                <div className={`w-24 h-24 rounded-full overflow-hidden border-4 border-white shadow-lg ${!previewUrl ? 'bg-cyan-100 flex items-center justify-center' : ''}`}>
+                                <div className={`w-24 h-24 rounded-full overflow-hidden border-4 border-slate-800 shadow-lg ${!previewUrl ? 'bg-cyan-900/30 flex items-center justify-center' : ''}`}>
                                     {previewUrl ? (
                                         <img src={previewUrl} alt="Avatar" className="w-full h-full object-cover" />
                                     ) : (
-                                        <span className="text-3xl text-cyan-600 font-bold">
+                                        <span className="text-3xl text-cyan-500 font-bold">
                                             {name ? name.charAt(0).toUpperCase() : '?'}
                                         </span>
                                     )}
                                 </div>
-                                <div className="absolute inset-0 bg-black/30 rounded-full opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
                                     <Camera className="text-white" size={24} />
                                 </div>
-                                <div className="absolute bottom-0 right-0 bg-cyan-500 p-1.5 rounded-full border-2 border-white shadow-sm">
+                                <div className="absolute bottom-0 right-0 bg-cyan-500 p-1.5 rounded-full border-2 border-slate-900 shadow-sm">
                                     <Camera className="text-white" size={14} />
                                 </div>
                             </div>
@@ -147,32 +181,56 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
                                 accept="image/*"
                                 onChange={handleFileChange}
                             />
-                            <p className="text-xs text-slate-500 mt-2">Klik foto untuk mengubah</p>
+                            <p className="text-xs text-slate-400 mt-2">Klik foto untuk mengubah</p>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                <label className="block text-sm font-medium text-slate-400 mb-1">
                                     Employee ID
                                 </label>
-                                <input
-                                    type="text"
-                                    value={employeeId}
-                                    onChange={(e) => setEmployeeId(e.target.value)}
-                                    disabled={!!user} // Cannot change ID after creation
-                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none disabled:bg-slate-100 disabled:text-slate-500"
-                                    placeholder="EMP001"
-                                    required
-                                />
+                                {(!user && role === 'employee') ? (
+                                    <select
+                                        value={selectedEmployeeId}
+                                        onChange={(e) => {
+                                            const empId = e.target.value;
+                                            setSelectedEmployeeId(empId);
+                                            const emp = employees.find(e => e.id === empId);
+                                            if (emp) {
+                                                setEmployeeId(emp.nik);
+                                                setName(emp.name || emp.user?.name || emp.nik);
+                                            }
+                                        }}
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none text-white"
+                                    >
+                                        <option value="">-- Pilih Karyawan --</option>
+                                        {employees.map(emp => (
+                                            <option key={emp.id} value={emp.id}>
+                                                {emp.nik}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={employeeId}
+                                        onChange={(e) => setEmployeeId(e.target.value)}
+                                        disabled={!!user || role === 'employee'} // Read-only if role is employee (set by select)
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 disabled:bg-slate-900 disabled:text-slate-600 text-white"
+                                        placeholder="EMP001"
+                                        required
+                                        autoComplete="off"
+                                    />
+                                )}
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                <label className="block text-sm font-medium text-slate-400 mb-1">
                                     Role
                                 </label>
                                 <select
                                     value={role}
                                     onChange={(e) => setRole(e.target.value as any)}
-                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white appearance-none"
                                 >
                                     <option value="employee">Employee</option>
                                     <option value="hr">HR</option>
@@ -182,42 +240,60 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                            <label className="block text-sm font-medium text-slate-400 mb-1">
+                                Kantor
+                            </label>
+                            <select
+                                value={officeId}
+                                onChange={(e) => setOfficeId(e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white appearance-none"
+                            >
+                                <option value="">-- Pilih Kantor --</option>
+                                {offices.map(office => (
+                                    <option key={office.id} value={office.id}>
+                                        {office.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1">
                                 Nama Lengkap
                             </label>
                             <input
                                 type="text"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white placeholder-slate-600 transition"
                                 placeholder="John Doe"
                                 required
                             />
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                            <label className="block text-sm font-medium text-slate-400 mb-1">
                                 Email
                             </label>
                             <input
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white placeholder-slate-600 transition"
                                 placeholder="email@company.com"
                                 required
                             />
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">
-                                Password {user && <span className="text-slate-400 font-normal">(Kosongkan jika tidak diubah)</span>}
+                            <label className="block text-sm font-medium text-slate-400 mb-1">
+                                Password {user && <span className="text-slate-600 font-normal">(Kosongkan jika tidak diubah)</span>}
                             </label>
                             <input
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white placeholder-slate-600 transition"
                                 placeholder={user ? "••••••••" : "Min. 6 karakter"}
                                 required={!user}
                                 minLength={6}
@@ -231,26 +307,26 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
                                     id="isActive"
                                     checked={isActive}
                                     onChange={(e) => setIsActive(e.target.checked)}
-                                    className="w-4 h-4 text-cyan-500 border-slate-300 rounded focus:ring-cyan-500"
+                                    className="w-4 h-4 text-cyan-500 border-slate-600 rounded focus:ring-cyan-500 bg-slate-950"
                                 />
-                                <label htmlFor="isActive" className="text-sm text-slate-700">
+                                <label htmlFor="isActive" className="text-sm text-slate-300">
                                     Akun Aktif
                                 </label>
                             </div>
                         )}
 
-                        <div className="pt-4 flex justify-end gap-3">
+                        <div className="pt-6 flex justify-end gap-3 border-t border-slate-800 mt-6">
                             <button
                                 type="button"
                                 onClick={onClose}
-                                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                                className="px-4 py-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition font-medium"
                             >
                                 Batal
                             </button>
                             <button
                                 type="submit"
                                 disabled={isLoading}
-                                className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold rounded-lg flex items-center gap-2 transition disabled:opacity-50"
+                                className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold rounded-lg flex items-center gap-2 transition disabled:opacity-50 shadow-lg shadow-cyan-900/20 active:scale-95"
                             >
                                 {isLoading ? (
                                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

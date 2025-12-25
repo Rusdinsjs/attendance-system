@@ -334,3 +334,58 @@ func (r *TransferRequestRepository) FindByStatus(ctx context.Context, status str
 func (r *TransferRequestRepository) Update(ctx context.Context, request *models.OfficeTransferRequest) error {
 	return r.db.WithContext(ctx).Save(request).Error
 }
+
+// KioskRepository handles database operations for kiosks
+type KioskRepository struct {
+	db *gorm.DB
+}
+
+// NewKioskRepository creates a new kiosk repository
+func NewKioskRepository(db *gorm.DB) *KioskRepository {
+	return &KioskRepository{db: db}
+}
+
+// Create creates a new kiosk
+func (r *KioskRepository) Create(ctx context.Context, kiosk *models.Kiosk) error {
+	return r.db.WithContext(ctx).Create(kiosk).Error
+}
+
+// FindByKioskID finds a kiosk by its unique ID
+func (r *KioskRepository) FindByKioskID(ctx context.Context, kioskID string) (*models.Kiosk, error) {
+	var kiosk models.Kiosk
+	err := r.db.WithContext(ctx).Where("kiosk_id = ?", kioskID).First(&kiosk).Error
+	if err != nil {
+		return nil, err
+	}
+	return &kiosk, nil
+}
+
+// UpdateLastSeen updates the last seen time of a kiosk
+func (r *KioskRepository) UpdateLastSeen(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Model(&models.Kiosk{}).Where("id = ?", id).Update("last_seen", time.Now()).Error
+}
+
+// GetAll returns all kiosks
+func (r *KioskRepository) GetAll(ctx context.Context) ([]models.Kiosk, error) {
+	var kiosks []models.Kiosk
+	err := r.db.WithContext(ctx).Preload("Office").Find(&kiosks).Error
+	return kiosks, err
+}
+
+// Update updates a kiosk
+func (r *KioskRepository) Update(ctx context.Context, kiosk *models.Kiosk) error {
+	return r.db.WithContext(ctx).Save(kiosk).Error
+}
+
+// Delete deletes a kiosk
+func (r *KioskRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Delete(&models.Kiosk{}, id).Error
+}
+func (r *KioskRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.Kiosk, error) {
+	var kiosk models.Kiosk
+	err := r.db.WithContext(ctx).Preload("Office").First(&kiosk, "id = ?", id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &kiosk, nil
+}

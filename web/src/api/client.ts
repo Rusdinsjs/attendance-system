@@ -71,6 +71,13 @@ export const adminAPI = {
     getSettings: () => apiClient.get('/admin/settings'),
     updateSetting: (key: string, value: string) =>
         apiClient.put(`/admin/settings/${key}`, { value }),
+    uploadLogo: (file: File) => {
+        const formData = new FormData();
+        formData.append('logo', file);
+        return apiClient.post('/admin/settings/logo', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
 
     // Transfer Requests
     getTransferRequests: () => apiClient.get('/admin/transfer-requests'),
@@ -84,9 +91,39 @@ export const adminAPI = {
     createOffice: (data: Partial<Office>) => apiClient.post('/admin/offices', data),
     updateOffice: (id: string, data: Partial<Office>) => apiClient.put(`/admin/offices/${id}`, data),
     deleteOffice: (id: string) => apiClient.delete(`/admin/offices/${id}`),
+
+    // Kiosk Management
+    getKiosks: () => apiClient.get('/admin/kiosks'),
+    createKiosk: (data: CreateKioskRequest) => apiClient.post('/admin/kiosks', data),
+    deleteKiosk: (id: string) => apiClient.delete(`/admin/kiosks/${id}`),
 };
 
 // Types
+import type { Employee } from '../types/employee';
+export type { Employee };
+
+export const employeeAPI = {
+    getEmployees: (params?: any) => apiClient.get('/admin/employees', { params }),
+    getAll: (params?: any) => apiClient.get('/admin/employees', { params }), // Keep for compatibility if used elsewhere
+    getOne: (id: string) => apiClient.get(`/admin/employees/${id}`),
+    create: (data: any) => apiClient.post('/admin/employees', data),
+    update: (id: string, data: any) => apiClient.put(`/admin/employees/${id}`, data),
+    delete: (id: string) => apiClient.delete(`/admin/employees/${id}`),
+    uploadPhoto: (id: string, file: File) => {
+        const formData = new FormData();
+        formData.append('photo', file);
+        return apiClient.post<{ message: string; photo_url: string }>(`/admin/employees/${id}/photo`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
+    importEmployees: (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.post<{ imported: number; skipped: number; errors: string[] }>('/admin/employees/import', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
+};
 export interface Office {
     id: string;
     name: string;
@@ -107,6 +144,9 @@ export interface User {
     avatar_url?: string;
     face_verification_status?: 'none' | 'pending' | 'verified' | 'rejected';
     created_at: string;
+    office_id?: string;
+    office?: Office;
+    employee?: Employee;
 }
 
 export interface Attendance {
@@ -130,6 +170,7 @@ export interface CreateUserRequest {
     email: string;
     password: string;
     role: 'employee' | 'admin' | 'hr';
+    office_id?: string;
 }
 
 export interface UpdateUserRequest {
@@ -138,12 +179,36 @@ export interface UpdateUserRequest {
     password?: string;
     role?: 'employee' | 'admin' | 'hr';
     is_active?: boolean;
+    office_id?: string;
 }
 
 export interface ReportParams {
     start_date?: string;
     end_date?: string;
     user_id?: string;
+}
+
+export interface Kiosk {
+    id: string;
+    kiosk_id: string;
+    name: string;
+    office_id: string;
+    office?: Office;
+    is_active: boolean;
+    last_seen: string;
+    created_at: string;
+}
+
+export interface CreateKioskRequest {
+    name: string;
+    kiosk_id: string;
+    office_id: string;
+}
+
+export interface UpdateKioskRequest {
+    name: string;
+    office_id: string;
+    is_active?: boolean;
 }
 
 export default apiClient;

@@ -126,6 +126,18 @@ type OfficeTransferRequest struct {
 	User                *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
+// Kiosk represents a registered kiosk device
+type Kiosk struct {
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	KioskID   string    `gorm:"uniqueIndex;not null" json:"kiosk_id"`
+	Name      string    `gorm:"not null" json:"name"`
+	OfficeID  uuid.UUID `gorm:"type:uuid;not null" json:"office_id"`
+	IsActive  bool      `gorm:"default:true" json:"is_active"`
+	LastSeen  time.Time `json:"last_seen"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	Office    *Office   `gorm:"foreignKey:OfficeID" json:"office,omitempty"`
+}
+
 // TableName overrides for GORM
 func (User) TableName() string                  { return "users" }
 func (Attendance) TableName() string            { return "attendances" }
@@ -134,3 +146,124 @@ func (Office) TableName() string                { return "offices" }
 func (FacePhoto) TableName() string             { return "face_photos" }
 func (Setting) TableName() string               { return "settings" }
 func (OfficeTransferRequest) TableName() string { return "office_transfer_requests" }
+func (Kiosk) TableName() string                 { return "kiosks" }
+func (Employee) TableName() string              { return "employees" }
+func (WorkExperience) TableName() string        { return "work_experiences" }
+func (EmployeeEvaluation) TableName() string    { return "employee_evaluations" }
+
+// JSONStringArray is a helper for storing []string as JSONB
+type JSONStringArray []string
+
+func (a JSONStringArray) Value() (driver.Value, error) {
+	if len(a) == 0 {
+		return "[]", nil
+	}
+	return json.Marshal(a)
+}
+
+func (a *JSONStringArray) Scan(value interface{}) error {
+	if value == nil {
+		*a = make([]string, 0)
+		return nil
+	}
+	bytes, ok := value.([]byte)
+	if !ok {
+		return errors.New("type assertion to []byte failed")
+	}
+	return json.Unmarshal(bytes, a)
+}
+
+// Employee represents detailed HR data linked to a User
+type Employee struct {
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	UserID    *uuid.UUID `gorm:"type:uuid;unique" json:"user_id,omitempty"` // Nullable if creating employee before user
+	User      *User      `gorm:"foreignKey:UserID" json:"user,omitempty"`
+
+	// Biodata
+	NIK            string    `gorm:"uniqueIndex" json:"nik"`
+	KTPNumber      string    `json:"ktp_number"` // NIK KTP
+	Name           string    `json:"name"`       // Full Name (Master Data)
+	PhotoURL       string    `json:"photo_url"`  // URL to employee photo
+	Gender         string    `json:"gender"` // L/P
+	PlaceOfBirth   string    `json:"place_of_birth"`
+	DateOfBirth    time.Time `json:"date_of_birth"`
+	MaritalStatus  string    `json:"marital_status"` // KAWIN, BELUM, DUDA, JANDA
+	ChildrenCount  int       `json:"children_count"`
+	Address        string    `json:"address"`
+	ResidenceStatus string   `json:"residence_status"` // RUMAH SENDIRI, KONTRAK, dll
+	Religion       string    `json:"religion"`
+	BloodType      string    `json:"blood_type"`
+
+	// Emergency Contact
+	EmergencyContactName     string `json:"emergency_contact_name"`
+	EmergencyContactPhone    string `json:"emergency_contact_phone"`
+	EmergencyContactRelation string `json:"emergency_contact_relation"`
+
+	// Employment
+	Position         string    `json:"position"`
+	OfficeID         uuid.UUID `gorm:"type:uuid" json:"office_id"`
+	Office           *Office   `gorm:"foreignKey:OfficeID" json:"office,omitempty"`
+	StartDate        time.Time `json:"start_date"`
+	EmploymentStatus string    `json:"employment_status"` // PKWT, PKWTT, MAGANG, LAINNYA
+	EndContractDate  *time.Time `json:"end_contract_date,omitempty"` // For PKWT
+
+	// Management & Roles
+	IsManager     bool       `gorm:"default:false" json:"is_manager"`
+	ManagerID     *uuid.UUID `gorm:"type:uuid" json:"manager_id,omitempty"`
+	Manager       *User      `gorm:"foreignKey:ManagerID" json:"manager,omitempty"` // Manager is a User (likely also an Employee, but linked via UserID for auth)
+	IsEvaluator   bool       `gorm:"default:false" json:"is_evaluator"`
+
+	// Competency & Education
+	Education             string          `json:"education"` // SD..DOCTORAL
+	Grade                 string          `json:"grade"`     // GRADE 1..10
+	Competencies          string          `json:"competencies"` // Text description
+	CompetencyAttachments JSONStringArray `gorm:"type:jsonb" json:"competency_attachments"`
+
+	// Payroll & Benefits
+	IsAllowance     bool            `gorm:"default:false" json:"is_allowance"`
+	Allowances      JSONStringArray `gorm:"type:jsonb" json:"allowances"` // Array of allowance names
+	BankAccount     string          `json:"bank_account"`
+	BankName        string          `json:"bank_name"`
+	BPJSKesehatan   string          `json:"bpjs_kesehatan"`
+	BPJSTenagaKerja string          `json:"bpjs_tenaga_kerja"`
+	NPWP            string          `json:"npwp"`
+	BasicSalary     float64         `json:"basic_salary"`
+
+	// Exit
+	ResignationDate   *time.Time `json:"resignation_date,omitempty"`
+	ResignationReason string     `json:"resignation_reason,omitempty"`
+
+	// Leave
+	LeaveBalance int `gorm:"default:12" json:"leave_balance"`
+	LeaveUsed    int `gorm:"default:0" json:"leave_used"`
+
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+
+	// Relations
+	WorkExperiences     []WorkExperience     `gorm:"foreignKey:EmployeeID" json:"work_experiences,omitempty"`
+	EmployeeEvaluations []EmployeeEvaluation `gorm:"foreignKey:EmployeeID" json:"employee_evaluations,omitempty"`
+}
+
+// WorkExperience represents past employment history
+type WorkExperience struct {
+	ID             uuid.UUID       `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	EmployeeID     uuid.UUID       `gorm:"type:uuid;not null" json:"employee_id"`
+	CompanyName    string          `gorm:"not null" json:"company_name"`
+	StartDate      time.Time       `json:"start_date"`
+	EndDate        time.Time       `json:"end_date"`
+	Description    string          `json:"description"`
+	AttachmentURLs JSONStringArray `gorm:"type:jsonb" json:"attachment_urls"`
+	CreatedAt      time.Time       `gorm:"autoCreateTime" json:"created_at"`
+}
+
+// EmployeeEvaluation represents annual performance reviews
+type EmployeeEvaluation struct {
+	ID          uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	EmployeeID  uuid.UUID `gorm:"type:uuid;not null" json:"employee_id"`
+	Year        int       `json:"year"`
+	Score       string    `json:"score"` // CUKUP, CUKUP BAIK, BAIK, SANGAT BAIK, ISTIMEWA
+	EvaluatorID uuid.UUID `gorm:"type:uuid" json:"evaluator_id"`
+	Evaluator   *User     `gorm:"foreignKey:EvaluatorID" json:"evaluator,omitempty"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
+}

@@ -1,16 +1,21 @@
 // Users Management Page
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminAPI } from '../api/client';
 import type { User, CreateUserRequest, UpdateUserRequest } from '../api/client';
-import { Search, Plus, Edit, Trash2, UserCheck, UserX } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, UserCheck, UserX, QrCode, Download, X, Eye } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import UserFormModal from '../components/UserFormModal';
+import UserDetailModal from '../components/users/UserDetailModal';
 
 export default function UsersPage() {
     const queryClient = useQueryClient();
     const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
+    const [detailUser, setDetailUser] = useState<User | null>(null);
+    const [qrUser, setQrUser] = useState<User | null>(null);
+    const qrRef = useRef<HTMLDivElement>(null);
 
     const { data: users, isLoading } = useQuery({
         queryKey: ['users'],
@@ -50,9 +55,9 @@ export default function UsersPage() {
 
     const getRoleBadge = (role: string) => {
         const styles: Record<string, string> = {
-            admin: 'bg-purple-100 text-purple-700',
-            hr: 'bg-blue-100 text-blue-700',
-            employee: 'bg-slate-100 text-slate-700',
+            admin: 'bg-purple-500/10 text-purple-400 border border-purple-500/20',
+            hr: 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
+            employee: 'bg-slate-800 text-slate-400 border border-slate-700',
         };
         return styles[role] || styles.employee;
     };
@@ -75,6 +80,40 @@ export default function UsersPage() {
                 alert('Gagal menghapus user');
             }
         }
+    };
+
+    const handleDownloadQR = () => {
+        if (!qrRef.current || !qrUser) return;
+        const svg = qrRef.current.querySelector('svg');
+        if (!svg) return;
+
+        const svgData = new XMLSerializer().serializeToString(svg);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+
+        img.onload = () => {
+            canvas.width = 300;
+            canvas.height = 350;
+            if (ctx) {
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height); // QR works best on white
+                ctx.drawImage(img, 50, 30, 200, 200);
+                ctx.fillStyle = 'black';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(qrUser.name, 150, 270);
+                ctx.font = '14px monospace';
+                ctx.fillText(qrUser.employee_id, 150, 295);
+            }
+
+            const link = document.createElement('a');
+            link.download = `QR-${qrUser.employee_id}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        };
+
+        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
     };
 
     const handleSubmit = async (data: CreateUserRequest | UpdateUserRequest, file?: File | null) => {
@@ -107,12 +146,12 @@ export default function UsersPage() {
             {/* Header */}
             <div className="flex items-center justify-between mb-8">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900">Manajemen User</h1>
-                    <p className="text-slate-500 mt-1">Kelola data karyawan</p>
+                    <h1 className="text-2xl font-bold text-white">Manajemen User</h1>
+                    <p className="text-slate-400 mt-1">Kelola data karyawan</p>
                 </div>
                 <button
                     onClick={handleOpenCreate}
-                    className="flex items-center gap-2 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg transition"
+                    className="flex items-center gap-2 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg transition shadow-lg shadow-cyan-500/20"
                 >
                     <Plus size={18} />
                     Tambah User
@@ -122,41 +161,41 @@ export default function UsersPage() {
             {/* Search */}
             <div className="mb-6">
                 <div className="relative max-w-md">
-                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                     <input
                         type="text"
                         placeholder="Cari nama, email, atau ID..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
+                        className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white placeholder-slate-600"
                     />
                 </div>
             </div>
 
             {/* Users Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden">
                 {isLoading ? (
-                    <div className="p-8 text-center text-slate-500">Loading...</div>
+                    <div className="p-8 text-center text-slate-400">Loading...</div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-slate-50">
+                            <thead className="bg-slate-950/50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Karyawan</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">ID</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Email</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Wajah</th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Aksi</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Karyawan</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">ID</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Email</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Role</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Status</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Wajah</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Aksi</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody className="divide-y divide-slate-800">
                                 {filteredUsers?.map((user: User) => (
-                                    <tr key={user.id} className="hover:bg-slate-50">
+                                    <tr key={user.id} className="hover:bg-slate-800/50 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-cyan-100 rounded-full flex items-center justify-center text-cyan-600 font-semibold overflow-hidden">
+                                                <div className="w-10 h-10 bg-cyan-900/30 rounded-full flex items-center justify-center text-cyan-400 font-semibold overflow-hidden border border-cyan-800/30">
                                                     {user.avatar_url ? (
                                                         <img
                                                             src={user.avatar_url}
@@ -172,13 +211,13 @@ export default function UsersPage() {
                                                         user.name.charAt(0).toUpperCase()
                                                     )}
                                                 </div>
-                                                <span className="font-medium text-slate-900">{user.name}</span>
+                                                <span className="font-medium text-white">{user.name}</span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-slate-600 font-mono text-sm">
+                                        <td className="px-6 py-4 whitespace-nowrap text-slate-400 font-mono text-sm">
                                             {user.employee_id}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-slate-600">
+                                        <td className="px-6 py-4 whitespace-nowrap text-slate-400">
                                             {user.email}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -188,36 +227,50 @@ export default function UsersPage() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             {user.is_active ? (
-                                                <span className="flex items-center gap-1 text-green-600">
+                                                <span className="flex items-center gap-1 text-emerald-400">
                                                     <UserCheck size={16} /> Aktif
                                                 </span>
                                             ) : (
-                                                <span className="flex items-center gap-1 text-slate-400">
+                                                <span className="flex items-center gap-1 text-slate-500">
                                                     <UserX size={16} /> Nonaktif
                                                 </span>
                                             )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             {user.face_verification_status === 'verified' ? (
-                                                <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">✓ Verified</span>
+                                                <span className="px-2 py-1 text-xs font-medium bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">✓ Verified</span>
                                             ) : user.face_verification_status === 'pending' ? (
-                                                <span className="px-2 py-1 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">⏳ Pending</span>
+                                                <span className="px-2 py-1 text-xs font-medium bg-amber-500/10 text-amber-400 rounded-full border border-amber-500/20">⏳ Pending</span>
                                             ) : user.face_verification_status === 'rejected' ? (
-                                                <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded-full">✗ Rejected</span>
+                                                <span className="px-2 py-1 text-xs font-medium bg-red-500/10 text-red-400 rounded-full border border-red-500/20">✗ Rejected</span>
                                             ) : (
-                                                <span className="px-2 py-1 text-xs font-medium bg-slate-100 text-slate-500 rounded-full">— Belum</span>
+                                                <span className="px-2 py-1 text-xs font-medium bg-slate-800 text-slate-500 rounded-full border border-slate-700">— Belum</span>
                                             )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right">
                                             <button
+                                                onClick={() => setDetailUser(user)}
+                                                className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-blue-400 transition mr-1"
+                                                title="Detail"
+                                            >
+                                                <Eye size={16} />
+                                            </button>
+                                            <button
+                                                onClick={() => setQrUser(user)}
+                                                className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-cyan-400 transition mr-1"
+                                                title="QR Code"
+                                            >
+                                                <QrCode size={16} />
+                                            </button>
+                                            <button
                                                 onClick={() => handleOpenEdit(user)}
-                                                className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-cyan-600 transition mr-2"
+                                                className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-cyan-400 transition mr-1"
                                             >
                                                 <Edit size={16} />
                                             </button>
                                             <button
                                                 onClick={() => handleDelete(user.id, user.name)}
-                                                className="p-2 hover:bg-red-50 rounded-lg text-slate-600 hover:text-red-600 transition"
+                                                className="p-2 hover:bg-red-900/30 rounded-lg text-slate-400 hover:text-red-400 transition"
                                             >
                                                 <Trash2 size={16} />
                                             </button>
@@ -243,6 +296,40 @@ export default function UsersPage() {
                 user={selectedUser}
                 onSubmit={handleSubmit}
                 isLoading={createMutation.isPending || updateMutation.isPending}
+            />
+
+            {/* QR Code Modal - Dark Theme */}
+            {qrUser && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm">
+                    {/* ... (QR Modal content, omitted for brevity in replace check, but functionally same place) ... */}
+                    {/* Actually, replacing the end of file, let's just append the detail modal before the closing div */}
+                    <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold text-white">QR Code</h3>
+                            <button onClick={() => setQrUser(null)} className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded transition">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="flex flex-col items-center bg-white p-6 rounded-lg" ref={qrRef}>
+                            <QRCodeSVG value={qrUser.employee_id} size={180} />
+                            <p className="mt-4 font-semibold text-slate-900">{qrUser.name}</p>
+                            <p className="text-slate-500 font-mono">{qrUser.employee_id}</p>
+                        </div>
+                        <button
+                            onClick={handleDownloadQR}
+                            className="w-full mt-6 flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-lg transition font-medium"
+                        >
+                            <Download size={18} />
+                            Download PNG
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <UserDetailModal
+                isOpen={!!detailUser}
+                onClose={() => setDetailUser(null)}
+                user={detailUser}
             />
         </div>
     );
