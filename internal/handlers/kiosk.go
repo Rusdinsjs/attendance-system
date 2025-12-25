@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"fmt"
 	"math"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/attendance-system/internal/models"
@@ -17,6 +20,7 @@ type KioskHandler struct {
 	attendanceRepo *repository.AttendanceRepository
 	settingsRepo   *repository.SettingsRepository
 	kioskRepo      *repository.KioskRepository
+	facePhotoRepo  *repository.FacePhotoRepository
 	wsHub          *WebSocketHub
 }
 
@@ -26,6 +30,7 @@ func NewKioskHandler(
 	attendanceRepo *repository.AttendanceRepository,
 	settingsRepo *repository.SettingsRepository,
 	kioskRepo *repository.KioskRepository,
+	facePhotoRepo *repository.FacePhotoRepository,
 	wsHub *WebSocketHub,
 ) *KioskHandler {
 	return &KioskHandler{
@@ -33,6 +38,7 @@ func NewKioskHandler(
 		attendanceRepo: attendanceRepo,
 		settingsRepo:   settingsRepo,
 		kioskRepo:      kioskRepo,
+		facePhotoRepo:  facePhotoRepo,
 		wsHub:          wsHub,
 	}
 }
@@ -375,6 +381,96 @@ func (h *KioskHandler) AdminUnlock(c *gin.Context) {
 	})
 }
 
+// GetAvailableKiosks returns list of unpaired kiosks
+// GET /api/kiosk/available
+func (h *KioskHandler) GetAvailableKiosks(c *gin.Context) {
+	adminCode := c.Query("code")
+
+	// Verify admin code
+	setting, err := h.settingsRepo.GetByKey(c.Request.Context(), "kiosk_admin_code")
+	expectedCode := "123456"
+	if err == nil && setting != nil {
+		expectedCode = setting.Value
+	}
+
+	if adminCode != expectedCode {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid admin code"})
+		return
+	}
+
+	kiosks, err := h.kioskRepo.FindAvailable(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch available kiosks"})
+		return
+	}
+
+	// Transform to simple response
+	var response []map[string]interface{}
+	for _, k := range kiosks {
+		response = append(response, map[string]interface{}{
+			"id":       k.ID,
+			"kiosk_id": k.KioskID,
+			"name":     k.Name,
+			"office":   k.Office.Name,
+		})
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// PairKioskRequest represents payload for pairing
+type PairKioskRequest struct {
+	KioskID   string `json:"kiosk_id" binding:"required"`
+	AdminCode string `json:"admin_code" binding:"required"`
+}
+
+// PairKiosk pairs a device with a kiosk ID
+// POST /api/kiosk/pair
+func (h *KioskHandler) PairKiosk(c *gin.Context) {
+	var req PairKioskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Verify admin code
+	setting, err := h.settingsRepo.GetByKey(c.Request.Context(), "kiosk_admin_code")
+	expectedCode := "123456"
+	if err == nil && setting != nil {
+		expectedCode = setting.Value
+	}
+
+	if req.AdminCode != expectedCode {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Kode admin salah"})
+		return
+	}
+
+	// Find Kiosk
+	kiosk, err := h.kioskRepo.FindByKioskID(c.Request.Context(), req.KioskID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Kiosk ID tidak ditemukan"})
+		return
+	}
+
+	if kiosk.IsPaired {
+		c.JSON(http.StatusConflict, gin.H{"error": "Kiosk ID sudah digunakan oleh perangkat lain"})
+		return
+	}
+
+	// Mark as paired
+	kiosk.IsPaired = true
+	if err := h.kioskRepo.Update(c.Request.Context(), kiosk); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan status pairing"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Update berhasil dipasangkan",
+		"kiosk":   kiosk,
+	})
+}
+
 // Admin Kiosk Management Handlers
 
 // GetAllKiosks returns all registered kiosks
@@ -490,6 +586,30 @@ func (h *KioskHandler) DeleteKiosk(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Kiosk deleted successfully"})
 }
 
+// UnpairKiosk resets the paired status of a kiosk
+// POST /api/admin/kiosks/:id/unpair
+func (h *KioskHandler) UnpairKiosk(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	kiosk, err := h.kioskRepo.FindByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Kiosk not found"})
+		return
+	}
+
+	kiosk.IsPaired = false
+	if err := h.kioskRepo.Update(c.Request.Context(), kiosk); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unpair kiosk"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Kiosk unpaired successfully"})
+}
+
 // GetKioskSettings returns public settings for kiosk
 // GET /api/kiosk/settings
 func (h *KioskHandler) GetKioskSettings(c *gin.Context) {
@@ -502,9 +622,10 @@ func (h *KioskHandler) GetKioskSettings(c *gin.Context) {
 	// Filter only public settings
 	publicSettings := make(map[string]string)
 	allowedKeys := map[string]bool{
-		"company_name":    true,
-		"company_address": true,
-		"company_logo":    true,
+		"company_name":               true,
+		"company_address":            true,
+		"company_logo":               true,
+		"kiosk_screensaver_timeout": true,
 	}
 
 	for _, s := range settings {
@@ -514,6 +635,153 @@ func (h *KioskHandler) GetKioskSettings(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, publicSettings)
+}
+
+// GetEmployeesForRegistration returns list of employees eligible for face registration
+// GET /api/kiosk/employees-for-registration
+func (h *KioskHandler) GetEmployeesForRegistration(c *gin.Context) {
+	adminCode := c.Query("code")
+
+	// Verify admin code
+	setting, err := h.settingsRepo.GetByKey(c.Request.Context(), "kiosk_admin_code")
+	expectedCode := "123456"
+	if err == nil && setting != nil {
+		expectedCode = setting.Value
+	}
+
+	if adminCode != expectedCode {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid admin code"})
+		return
+	}
+
+	users, err := h.userRepo.FindEmployeesForRegistration(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch employees"})
+		return
+	}
+
+	// Transform to lightweight response
+	var response []gin.H
+	for _, u := range users {
+		response = append(response, gin.H{
+			"id":          u.ID,
+			"employee_id": u.EmployeeID,
+			"name":        u.Name,
+		})
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// RegisterFace handles face registration from Kiosk
+// POST /api/kiosk/register-face
+func (h *KioskHandler) RegisterFace(c *gin.Context) {
+	// 1. Verify Admin Code (Multipart form)
+	adminCode := c.PostForm("admin_code")
+	
+	setting, err := h.settingsRepo.GetByKey(c.Request.Context(), "kiosk_admin_code")
+	expectedCode := "123456"
+	if err == nil && setting != nil {
+		expectedCode = setting.Value
+	}
+
+	if adminCode != expectedCode {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid admin code"})
+		return
+	}
+
+	// 2. Get Employee ID
+	employeeID := c.PostForm("employee_id")
+	if employeeID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Employee ID required"})
+		return
+	}
+
+	user, err := h.userRepo.FindByEmployeeID(c.Request.Context(), employeeID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Karyawan tidak ditemukan"})
+		return
+	}
+
+	// 3. Handle Files
+	form, err := c.MultipartForm()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid form data"})
+		return
+	}
+
+	files := form.File["photos"]
+	if len(files) != 5 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Harus upload 5 foto"})
+		return
+	}
+
+	// Create directory
+	uploadDir := filepath.Join("uploads", "faces", user.ID.String())
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create upload directory"})
+		return
+	}
+
+	// Delete existing photos if any
+	_ = h.facePhotoRepo.DeleteByUserID(c.Request.Context(), user.ID)
+
+	// Save files
+	var savedPhotos []models.FacePhoto
+	for i, file := range files {
+		filename := fmt.Sprintf("face_%d_%s", i+1, filepath.Base(file.Filename))
+		filePath := filepath.Join(uploadDir, filename)
+
+		if err := c.SaveUploadedFile(file, filePath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save photo"})
+			return
+		}
+
+		photo := models.FacePhoto{
+			UserID:     user.ID,
+			PhotoPath:  "/" + filePath,
+			PhotoOrder: i + 1,
+		}
+		savedPhotos = append(savedPhotos, photo)
+	}
+
+	// Save to DB
+	for _, photo := range savedPhotos {
+		if err := h.facePhotoRepo.Create(c.Request.Context(), &photo); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save photo record"})
+			return
+		}
+	}
+
+	// Update User Status
+	user.FaceVerificationStatus = "approved"
+	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Registrasi wajah berhasil dikirim. Menunggu verifikasi admin.",
+	})
+}
+
+// GetCompanySettings returns public company info for kiosk
+// GET /api/kiosk/company-settings
+func (h *KioskHandler) GetCompanySettings(c *gin.Context) {
+	keys := []string{"company_name", "company_address", "company_logo"}
+	response := make(map[string]string)
+
+	for _, key := range keys {
+		setting, err := h.settingsRepo.GetByKey(c.Request.Context(), key)
+		if err == nil && setting != nil {
+			response[key] = setting.Value
+		} else {
+			response[key] = "" // Default empty if not set
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // Helper functions

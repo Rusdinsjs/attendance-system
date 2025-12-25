@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -113,7 +114,7 @@ func main() {
 
 	// Kiosk Attendance
 	kioskRepo := repository.NewKioskRepository(db)
-	kioskHandler := handlers.NewKioskHandler(userRepo, attendanceRepo, settingsRepo, kioskRepo, wsHub)
+	kioskHandler := handlers.NewKioskHandler(userRepo, attendanceRepo, settingsRepo, kioskRepo, facePhotoRepo, wsHub)
 
 	// Setup Gin router
 	router := gin.Default()
@@ -130,6 +131,16 @@ func main() {
 
 	// Static files
 	router.Static("/uploads", "./uploads")
+	router.Static("/assets", "./public/assets")
+	router.StaticFile("/", "./public/index.html")
+	router.StaticFile("/favicon.ico", "./public/favicon.ico")
+
+	// Serve the rest of the frontend for SPA
+	router.NoRoute(func(c *gin.Context) {
+		if !strings.HasPrefix(c.Request.URL.Path, "/api") {
+			c.File("./public/index.html")
+		}
+	})
 
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
@@ -162,6 +173,11 @@ func main() {
 			kiosk.GET("/status/:employee_id", kioskHandler.GetKioskStatus)
 			kiosk.POST("/admin-unlock", kioskHandler.AdminUnlock)
 			kiosk.GET("/settings", kioskHandler.GetKioskSettings)
+			kiosk.GET("/available", kioskHandler.GetAvailableKiosks)
+			kiosk.POST("/pair", kioskHandler.PairKiosk)
+			kiosk.GET("/employees-for-registration", kioskHandler.GetEmployeesForRegistration)
+			kiosk.POST("/register-face", kioskHandler.RegisterFace)
+			kiosk.GET("/company-settings", kioskHandler.GetCompanySettings)
 		}
 
 		// Protected routes
@@ -229,6 +245,7 @@ func main() {
 				admin.POST("/kiosks", kioskHandler.CreateKiosk)
 				admin.PUT("/kiosks/:id", kioskHandler.UpdateKiosk)
 				admin.DELETE("/kiosks/:id", kioskHandler.DeleteKiosk)
+				admin.POST("/kiosks/:id/unpair", kioskHandler.UnpairKiosk)
 
 				// Employee routes
 				admin.GET("/employees", employeeHandler.GetAllEmployees)

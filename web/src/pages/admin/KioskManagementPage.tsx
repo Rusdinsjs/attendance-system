@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { adminAPI, type Kiosk } from '../../api/client';
-import { Plus, Edit, Trash2, Monitor, MapPin, Activity, XCircle, Laptop } from 'lucide-react';
+import { Plus, Edit, Trash2, Monitor, MapPin, Activity, XCircle, Laptop, Smartphone, Unlink } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
 
@@ -103,6 +103,18 @@ export default function KioskManagementPage() {
         }
     };
 
+    const handleUnpair = async (id: string, name: string) => {
+        if (window.confirm(`Reset pairing untuk kiosk ${name}? Device fisik harus dipairing ulang setelah ini.`)) {
+            try {
+                await adminAPI.unpairKiosk(id);
+                fetchData();
+                alert('Berhasil reset pairing. Kiosk ID ini sekarang available.');
+            } catch (error) {
+                alert('Gagal reset pairing');
+            }
+        }
+    };
+
     if (loading) return (
         <div className="flex items-center justify-center min-h-[60vh]">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
@@ -176,9 +188,25 @@ export default function KioskManagementPage() {
                                 <MapPin size={16} className="text-slate-500" />
                                 <span className="font-medium text-slate-300">{kiosk.office?.name || 'Unknown Office'}</span>
                             </div>
+
                             <div className="flex items-center gap-3 text-sm text-slate-400 bg-slate-800/50 p-3 rounded-xl border border-slate-800/50">
                                 <Activity size={16} className={kiosk.is_active ? "text-green-500" : "text-slate-500"} />
                                 <span>Seen: {new Date(kiosk.last_seen).getFullYear() === 1 ? 'Never' : format(new Date(kiosk.last_seen), 'dd MMM HH:mm', { locale: idLocale })}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 text-sm bg-slate-800/50 p-3 rounded-xl border border-slate-800/50">
+                                <div className="flex items-center gap-2 text-slate-400">
+                                    <Smartphone size={16} className={kiosk.is_paired ? "text-blue-500" : "text-slate-500"} />
+                                    <span>{kiosk.is_paired ? 'Paired' : 'Available'}</span>
+                                </div>
+                                {kiosk.is_paired && (
+                                    <button
+                                        onClick={() => handleUnpair(kiosk.id, kiosk.name)}
+                                        className="px-2 py-1 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg flex items-center gap-1 transition"
+                                    >
+                                        <Unlink size={12} />
+                                        Unpair
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -214,109 +242,100 @@ export default function KioskManagementPage() {
             </div>
 
             {/* Create/Edit Modal - Dark Theme */}
-            {showModal && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-in fade-in duration-200">
-                    <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg p-8 shadow-2xl relative overflow-hidden animate-in zoom-in-95 duration-200">
-                        {/* Modal Glow */}
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-blue-600"></div>
+            {
+                showModal && (
+                    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-md animate-in fade-in duration-200">
+                        <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg p-8 shadow-2xl relative overflow-hidden animate-in zoom-in-95 duration-200">
+                            {/* Modal Glow */}
+                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-blue-600"></div>
 
-                        <h2 className="text-2xl font-bold text-white mb-8 flex items-center gap-3">
-                            {editingKiosk ? <Edit className="text-cyan-400" /> : <Plus className="text-cyan-400" />}
-                            {editingKiosk ? 'Edit Konfigurasi' : 'Registrasi Kiosk Baru'}
-                        </h2>
+                            <h2 className="text-2xl font-bold text-white mb-8 flex items-center gap-3">
+                                {editingKiosk ? <Edit className="text-cyan-400" /> : <Plus className="text-cyan-400" />}
+                                {editingKiosk ? 'Edit Konfigurasi' : 'Registrasi Kiosk Baru'}
+                            </h2>
 
-                        <form onSubmit={handleSubmit} className="space-y-6">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-400 mb-2">Nama Device</label>
-                                <input
-                                    type="text"
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition placeholder-slate-600"
-                                    placeholder="Contoh: Kiosk Lobby Utama"
-                                    required
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
+                            <form onSubmit={handleSubmit} className="space-y-6">
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-400 mb-2">Kiosk ID</label>
+                                    <label className="block text-sm font-medium text-slate-400 mb-2">Nama Device</label>
                                     <input
                                         type="text"
-                                        value={kioskId}
-                                        onChange={(e) => setKioskId(e.target.value.toUpperCase())}
-                                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none uppercase font-mono tracking-wide placeholder-slate-600"
-                                        placeholder="XX-01"
-                                        disabled={!!editingKiosk}
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition placeholder-slate-600"
+                                        placeholder="Contoh: Kiosk Lobby Utama"
                                         required
                                     />
-                                    {editingKiosk && <p className="text-xs text-slate-600 mt-1">ID Permanent</p>}
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-400 mb-2">Lokasi</label>
-                                    <select
-                                        value={officeId}
-                                        onChange={(e) => setOfficeId(e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none"
-                                        required
-                                    >
-                                        <option value="">Pilih Kantor</option>
-                                        {Array.isArray(offices) && offices.map((office) => (
-                                            <option key={office.id} value={office.id}>{office.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
 
-                            {editingKiosk && (
-                                <div className="flex items-center gap-3 p-4 bg-slate-950 border border-slate-800 rounded-xl">
-                                    <div className="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-400 mb-2">Kiosk ID</label>
                                         <input
-                                            type="checkbox"
-                                            name="toggle"
-                                            id="isActive"
-                                            checked={isActive}
-                                            onChange={(e) => setIsActive(e.target.checked)}
-                                            className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer transition-transform duration-200 ease-in-out checked:translate-x-full checked:border-cyan-500"
+                                            type="text"
+                                            value={kioskId}
+                                            onChange={(e) => setKioskId(e.target.value.toUpperCase())}
+                                            className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none uppercase font-mono tracking-wide placeholder-slate-600"
+                                            placeholder="XX-01"
+                                            disabled={!!editingKiosk}
+                                            required
                                         />
-                                        <label htmlFor="isActive" className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer ${isActive ? 'bg-cyan-500' : 'bg-slate-700'}`}></label>
+                                        {editingKiosk && <p className="text-xs text-slate-600 mt-1">ID Permanent</p>}
                                     </div>
-                                    <label htmlFor="isActive" className="text-sm font-medium text-slate-300">
-                                        Status Aktif <span className="text-slate-500 text-xs ml-1">(Bisa digunakan)</span>
-                                    </label>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-400 mb-2">Lokasi</label>
+                                        <select
+                                            value={officeId}
+                                            onChange={(e) => setOfficeId(e.target.value)}
+                                            className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 outline-none appearance-none"
+                                            required
+                                        >
+                                            <option value="">Pilih Kantor</option>
+                                            {Array.isArray(offices) && offices.map((office) => (
+                                                <option key={office.id} value={office.id}>{office.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
-                            )}
 
-                            <div className="flex gap-4 pt-4 border-t border-slate-800 mt-8">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowModal(false)}
-                                    className="flex-1 px-6 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition font-medium"
-                                >
-                                    Batal
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="flex-1 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl transition font-bold shadow-lg shadow-cyan-900/20 active:scale-95"
-                                >
-                                    Simpan Perubahan
-                                </button>
-                            </div>
-                        </form>
+                                {editingKiosk && (
+                                    <div className="flex items-center gap-3 p-4 bg-slate-950 border border-slate-800 rounded-xl">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsActive(!isActive)}
+                                            className={`relative w-12 h-7 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-cyan-500 ${isActive ? 'bg-cyan-500' : 'bg-slate-700'}`}
+                                        >
+                                            <span
+                                                className={`block w-5 h-5 bg-white rounded-full shadow-lg transform transition-transform duration-200 ${isActive ? 'translate-x-6' : 'translate-x-1'}`}
+                                            />
+                                        </button>
+                                        <label htmlFor="isActive" className="text-sm font-medium text-slate-300">
+                                            {isActive ? 'Status Aktif' : 'Status Tidak Aktif'} <span className="text-slate-500 text-xs ml-1">{isActive ? '(Bisa digunakan)' : '(Non-aktif)'}</span>
+                                        </label>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-4 pt-4 border-t border-slate-800 mt-8">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowModal(false)}
+                                        className="flex-1 px-6 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition font-medium"
+                                    >
+                                        Batal
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="flex-1 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl transition font-bold shadow-lg shadow-cyan-900/20 active:scale-95"
+                                    >
+                                        Simpan Perubahan
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
-            {/* Toggle Switch Style fallback */}
-            <style>{`
-                .toggle-checkbox:checked {
-                    right: 0;
-                    border-color: #06b6d4;
-                }
-                .toggle-checkbox:checked + .toggle-label {
-                    background-color: #06b6d4;
-                }
-            `}</style>
-        </div>
+
+        </div >
     );
 }

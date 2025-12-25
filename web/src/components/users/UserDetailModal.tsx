@@ -24,7 +24,7 @@ export default function UserDetailModal({ isOpen, onClose, user }: UserDetailMod
                     <div className="flex items-center gap-4 mb-6">
                         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center text-cyan-400 border border-white/10">
                             {user.avatar_url ? (
-                                <img src={`http://localhost:8080${user.avatar_url}`} alt={user.name} className="w-full h-full object-cover rounded-full" />
+                                <img src={user.avatar_url} alt={user.name} className="w-full h-full object-cover rounded-full" />
                             ) : (
                                 <User size={32} />
                             )}

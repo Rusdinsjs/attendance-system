@@ -51,10 +51,11 @@ export default function EmployeeForm({ isOpen, onClose, onSuccess, employee, rea
     }, []);
 
     useEffect(() => {
+        setError(''); // Clear error when switching employees
         if (employee) {
             setFormData(employee);
             if (employee.photo_url) {
-                setPhotoPreview(`http://localhost:8080${employee.photo_url}`);
+                setPhotoPreview(employee.photo_url);
             }
         } else {
             setFormData({
@@ -233,9 +234,14 @@ export default function EmployeeForm({ isOpen, onClose, onSuccess, employee, rea
                     ))}
                 </div>
 
-                {/* Form Content */}
                 <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                     <form onSubmit={handleSubmit} className="space-y-6">
+                        {error && (
+                            <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
+                                <span className="inline-block w-2 h-2 rounded-full bg-red-400"></span>
+                                {error}
+                            </div>
+                        )}
 
                         {/* BIODATA TAB */}
                         {activeTab === 'biodata' && (

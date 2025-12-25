@@ -13,6 +13,7 @@ export default function SettingsPage() {
     const [faceThreshold, setFaceThreshold] = useState('0.6');
     const [minGpsAccuracy, setMinGpsAccuracy] = useState('20');
     const [kioskAdminCode, setKioskAdminCode] = useState('123456');
+    const [kioskScreensaverTimeout, setKioskScreensaverTimeout] = useState('30');
     const [isSaving, setIsSaving] = useState(false);
 
     const { data: settings, isLoading } = useQuery({
@@ -31,6 +32,7 @@ export default function SettingsPage() {
             setFaceThreshold(settings.face_threshold || '0.6');
             setMinGpsAccuracy(settings.min_gps_accuracy || '20');
             setKioskAdminCode(settings.kiosk_admin_code || '123456');
+            setKioskScreensaverTimeout(settings.kiosk_screensaver_timeout || '30');
         }
     }, [settings]);
 
@@ -55,6 +57,7 @@ export default function SettingsPage() {
             await updateMutation.mutateAsync({ key: 'face_threshold', value: faceThreshold });
             await updateMutation.mutateAsync({ key: 'min_gps_accuracy', value: minGpsAccuracy });
             await updateMutation.mutateAsync({ key: 'kiosk_admin_code', value: kioskAdminCode });
+            await updateMutation.mutateAsync({ key: 'kiosk_screensaver_timeout', value: kioskScreensaverTimeout });
             alert('Pengaturan berhasil disimpan');
             setLogoFile(null);
         } catch (err) {
@@ -243,6 +246,26 @@ export default function SettingsPage() {
                             </div>
                             <p className="text-sm text-slate-500 mt-1">
                                 PIN ini digunakan untuk memasangkan perangkat Kiosk baru (default: 123456)
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-2">
+                                Screensaver Timeout (detik)
+                            </label>
+                            <div className="flex items-center gap-4">
+                                <input
+                                    type="number"
+                                    min="10"
+                                    max="3600"
+                                    value={kioskScreensaverTimeout}
+                                    onChange={(e) => setKioskScreensaverTimeout(e.target.value)}
+                                    className="w-24 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white placeholder-slate-600"
+                                />
+                                <span className="text-slate-400">detik</span>
+                            </div>
+                            <p className="text-sm text-slate-500 mt-1">
+                                Kiosk akan masuk ke mode screensaver setelah tidak ada aktivitas (default: 30 detik)
                             </p>
                         </div>
                     </div>

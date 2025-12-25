@@ -133,6 +133,7 @@ type Kiosk struct {
 	Name      string    `gorm:"not null" json:"name"`
 	OfficeID  uuid.UUID `gorm:"type:uuid;not null" json:"office_id"`
 	IsActive  bool      `gorm:"default:true" json:"is_active"`
+	IsPaired  bool      `gorm:"default:false" json:"is_paired"`
 	LastSeen  time.Time `json:"last_seen"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 	Office    *Office   `gorm:"foreignKey:OfficeID" json:"office,omitempty"`

@@ -95,7 +95,9 @@ export const adminAPI = {
     // Kiosk Management
     getKiosks: () => apiClient.get('/admin/kiosks'),
     createKiosk: (data: CreateKioskRequest) => apiClient.post('/admin/kiosks', data),
+    updateKiosk: (id: string, data: Partial<UpdateKioskRequest>) => apiClient.put(`/admin/kiosks/${id}`, data),
     deleteKiosk: (id: string) => apiClient.delete(`/admin/kiosks/${id}`),
+    unpairKiosk: (id: string) => apiClient.post(`/admin/kiosks/${id}/unpair`),
 };
 
 // Types
@@ -195,6 +197,7 @@ export interface Kiosk {
     office_id: string;
     office?: Office;
     is_active: boolean;
+    is_paired: boolean;
     last_seen: string;
     created_at: string;
 }

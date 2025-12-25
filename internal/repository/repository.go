@@ -95,6 +95,16 @@ func (r *UserRepository) FindByFaceStatus(ctx context.Context, status string) ([
 	return users, err
 }
 
+// FindEmployeesForRegistration finds users eligible for face registration
+func (r *UserRepository) FindEmployeesForRegistration(ctx context.Context) ([]models.User, error) {
+	var users []models.User
+	err := r.db.WithContext(ctx).
+		Where("is_active = ? AND face_verification_status IN ?", true, []string{"not_registered", "rejected"}).
+		Order("name ASC").
+		Find(&users).Error
+	return users, err
+}
+
 // FacePhotoRepository handles database operations for face photos
 type FacePhotoRepository struct {
 	db *gorm.DB
@@ -388,4 +398,11 @@ func (r *KioskRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.K
 		return nil, err
 	}
 	return &kiosk, nil
+}
+
+// FindAvailable returns all kiosks that are not paired yet
+func (r *KioskRepository) FindAvailable(ctx context.Context) ([]models.Kiosk, error) {
+	kiosks := []models.Kiosk{}
+	err := r.db.WithContext(ctx).Where("is_paired = ? AND is_active = ?", false, true).Preload("Office").Find(&kiosks).Error
+	return kiosks, err
 }

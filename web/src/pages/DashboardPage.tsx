@@ -35,10 +35,7 @@ export default function DashboardPage() {
     // WebSocket connection
     useEffect(() => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // Use API_URL environment variable or fallback to localhost:8080 for dev
-        const host = import.meta.env.VITE_API_URL
-            ? import.meta.env.VITE_API_URL.replace(/^http(s)?:\/\//, '')
-            : 'localhost:8080';
+        const host = window.location.host;
 
         const wsUrl = `${protocol}//${host}/ws/dashboard`;
         const ws = new WebSocket(wsUrl);
