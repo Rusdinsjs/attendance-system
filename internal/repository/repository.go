@@ -221,6 +221,17 @@ func (r *FacePhotoRepository) DeleteByUserID(ctx context.Context, userID uuid.UU
 }
 
 
+// AttendanceFilters contains filter criteria for attendance reports
+type AttendanceFilters struct {
+	StartDate string
+	EndDate   string
+	Position  string
+	OfficeID  string
+	Status    string // "late", "on_time"
+	SortBy    string
+	SortOrder string // "ASC", "DESC"
+}
+
 // AttendanceRepository handles database operations for attendance
 type AttendanceRepository struct {
 	db *gorm.DB
@@ -278,30 +289,132 @@ func (r *AttendanceRepository) GetHistory(ctx context.Context, userID uuid.UUID,
 	return attendances, err
 }
 
-// GetAllToday returns attendance records with filters and pagination
-func (r *AttendanceRepository) GetAllToday(ctx context.Context, startDate, endDate string, limit, offset int) ([]models.Attendance, int64, error) {
+// FindAll returns attendance records with advanced filters and sorting
+func (r *AttendanceRepository) FindAll(ctx context.Context, filters AttendanceFilters, limit, offset int) ([]models.Attendance, int64, error) {
 	var attendances []models.Attendance
 	var total int64
 	
-	query := r.db.WithContext(ctx).Model(&models.Attendance{}).Preload("User")
+	query := r.db.WithContext(ctx).Model(&models.Attendance{}).
+		Preload("User").
+		Preload("User.Office"). // Preload Office for User
+		Preload("User.Employee"). // Preload Employee for User
+		Joins("JOIN users ON users.id = attendances.user_id").
+		Joins("LEFT JOIN employees ON employees.user_id = users.id") // Join employees for position
 	
-	if startDate != "" && endDate != "" {
-		query = query.Where("DATE(check_in_time) BETWEEN ? AND ?", startDate, endDate)
+	// Date Range Filter
+	if filters.StartDate != "" && filters.EndDate != "" {
+		query = query.Where("DATE(attendances.check_in_time) BETWEEN ? AND ?", filters.StartDate, filters.EndDate)
 	} else {
-		today := time.Now().Format("2006-01-02")
-		query = query.Where("DATE(check_in_time) = ?", today)
+		// Default to today if no date provided? Or all? 
+		// Previous logic defaulted to Today. Let's keep that default if completely empty, 
+		// but usually reports module sends dates.
+		if filters.StartDate == "" && filters.EndDate == "" {
+			today := time.Now().Format("2006-01-02")
+			query = query.Where("DATE(attendances.check_in_time) = ?", today)
+		}
 	}
-	
+
+	// Position Filter
+	if filters.Position != "" {
+		query = query.Where("employees.position ILIKE ?", "%"+filters.Position+"%")
+	}
+
+	// Office Location Filter (using OfficeID from User link)
+	if filters.OfficeID != "" {
+		query = query.Where("users.office_id = ?", filters.OfficeID)
+	}
+
+	// Status Filter (Late vs On Time)
+	if filters.Status != "" {
+		if filters.Status == "late" {
+			query = query.Where("attendances.is_late = ?", true)
+		} else if filters.Status == "on_time" {
+			query = query.Where("attendances.is_late = ?", false)
+		}
+	}
+
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	err := query.Order("check_in_time DESC").
+	// Sorting
+	sortMap := map[string]string{
+		"check_in_time": "attendances.check_in_time",
+		"name":          "users.name",
+		"position":      "employees.position",
+		"office":        "users.office_id", // Sorting by ID is weird, maybe join office name?
+		// For now simple field mapping
+	}
+
+	orderBy := "attendances.check_in_time" // Default
+	orderDir := "DESC"
+	
+	if filters.SortBy != "" {
+		if val, ok := sortMap[filters.SortBy]; ok {
+			orderBy = val
+		} else {
+			// Fallback or allowed explicit columns
+			orderBy = filters.SortBy
+		}
+	}
+	
+	if filters.SortOrder == "ASC" || filters.SortOrder == "asc" {
+		orderDir = "ASC"
+	}
+
+	// Special case for office name sorting if needed, requires another Join if not already preloaded 
+	// (GORM Preload doesn't join for sorting).
+	// We joined Users. We would need to join Offices to sort by Office Name.
+	// Assume OfficeID sort for now or client handles mapping.
+
+	err := query.Order(fmt.Sprintf("%s %s", orderBy, orderDir)).
 		Limit(limit).
 		Offset(offset).
 		Find(&attendances).Error
 	
 	return attendances, total, err
+}
+
+// GetReportStats calculates attendance statistics based on filters
+func (r *AttendanceRepository) GetReportStats(ctx context.Context, filters AttendanceFilters) (int64, int64, error) {
+	var totalLate, totalOnTime int64
+
+	// Base Query Construction (Similar to FindAll but no pagination/sort/status)
+	query := r.db.WithContext(ctx).Model(&models.Attendance{}).
+		Joins("JOIN users ON users.id = attendances.user_id").
+		Joins("LEFT JOIN employees ON employees.user_id = users.id")
+
+	// Date Range Filter
+	if filters.StartDate != "" && filters.EndDate != "" {
+		query = query.Where("DATE(attendances.check_in_time) BETWEEN ? AND ?", filters.StartDate, filters.EndDate)
+	} else {
+		if filters.StartDate == "" && filters.EndDate == "" {
+			today := time.Now().Format("2006-01-02")
+			query = query.Where("DATE(attendances.check_in_time) = ?", today)
+		}
+	}
+
+	// Position Filter
+	if filters.Position != "" {
+		query = query.Where("employees.position ILIKE ?", "%"+filters.Position+"%")
+	}
+
+	// Office Location Filter
+	if filters.OfficeID != "" {
+		query = query.Where("users.office_id = ?", filters.OfficeID)
+	}
+
+	// Count Late
+	if err := query.Session(&gorm.Session{}).Where("attendances.is_late = ?", true).Count(&totalLate).Error; err != nil {
+		return 0, 0, err
+	}
+
+	// Count On Time
+	if err := query.Session(&gorm.Session{}).Where("attendances.is_late = ?", false).Count(&totalOnTime).Error; err != nil {
+		return 0, 0, err
+	}
+
+	return totalLate, totalOnTime, nil
 }
 
 // RefreshTokenRepository handles database operations for refresh tokens

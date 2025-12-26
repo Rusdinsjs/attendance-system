@@ -188,6 +188,11 @@ export interface ReportParams {
     start_date?: string;
     end_date?: string;
     user_id?: string;
+    position?: string;
+    office_id?: string;
+    status?: 'late' | 'on_time';
+    sort_by?: string;
+    sort_order?: 'ASC' | 'DESC';
 }
 
 export interface Kiosk {

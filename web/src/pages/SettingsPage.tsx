@@ -1,7 +1,7 @@
 // Settings Page - Admin
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminAPI } from '../api/client';
-import { Settings, Save, AlertCircle, Key, Building } from 'lucide-react';
+import { Settings, Save, AlertCircle, Key, Building, MapPin, ScanFace } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export default function SettingsPage() {
@@ -14,7 +14,7 @@ export default function SettingsPage() {
     const [minGpsAccuracy, setMinGpsAccuracy] = useState('20');
     const [kioskAdminCode, setKioskAdminCode] = useState('123456');
     const [kioskScreensaverTimeout, setKioskScreensaverTimeout] = useState('30');
-    const [isSaving, setIsSaving] = useState(false);
+    const [savingSection, setSavingSection] = useState<string | null>(null);
 
     const { data: settings, isLoading } = useQuery({
         queryKey: ['settings'],
@@ -44,26 +44,58 @@ export default function SettingsPage() {
         },
     });
 
-    const handleSave = async () => {
-        setIsSaving(true);
+    const handleSaveCompany = async () => {
+        setSavingSection('company');
         try {
-            // Upload logo if changed
             if (logoFile) {
                 const res = await adminAPI.uploadLogo(logoFile);
                 setCompanyLogo(res.data.logo_url);
             }
             await updateMutation.mutateAsync({ key: 'company_name', value: companyName });
             await updateMutation.mutateAsync({ key: 'company_address', value: companyAddress });
+            setLogoFile(null);
+            alert('Profil perusahaan berhasil disimpan');
+        } catch (err) {
+            alert('Gagal menyimpan profil perusahaan');
+        } finally {
+            setSavingSection(null);
+        }
+    };
+
+    const handleSaveFace = async () => {
+        setSavingSection('face');
+        try {
             await updateMutation.mutateAsync({ key: 'face_threshold', value: faceThreshold });
+            alert('Pengaturan verifikasi wajah berhasil disimpan');
+        } catch (err) {
+            alert('Gagal menyimpan pengaturan verifikasi wajah');
+        } finally {
+            setSavingSection(null);
+        }
+    };
+
+    const handleSaveGPS = async () => {
+        setSavingSection('gps');
+        try {
             await updateMutation.mutateAsync({ key: 'min_gps_accuracy', value: minGpsAccuracy });
+            alert('Pengaturan GPS berhasil disimpan');
+        } catch (err) {
+            alert('Gagal menyimpan pengaturan GPS');
+        } finally {
+            setSavingSection(null);
+        }
+    };
+
+    const handleSaveKiosk = async () => {
+        setSavingSection('kiosk');
+        try {
             await updateMutation.mutateAsync({ key: 'kiosk_admin_code', value: kioskAdminCode });
             await updateMutation.mutateAsync({ key: 'kiosk_screensaver_timeout', value: kioskScreensaverTimeout });
-            alert('Pengaturan berhasil disimpan');
-            setLogoFile(null);
+            alert('Pengaturan Kiosk berhasil disimpan');
         } catch (err) {
-            alert('Gagal menyimpan pengaturan');
+            alert('Gagal menyimpan pengaturan Kiosk');
         } finally {
-            setIsSaving(false);
+            setSavingSection(null);
         }
     };
 
@@ -76,6 +108,19 @@ export default function SettingsPage() {
     if (isLoading) {
         return <div className="p-6 text-center text-slate-400">Loading...</div>;
     }
+
+    const SaveButton = ({ onClick, section }: { onClick: () => void, section: string }) => (
+        <div className="mt-6 flex justify-end">
+            <button
+                onClick={onClick}
+                disabled={savingSection === section}
+                className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-lg font-medium hover:shadow-lg hover:shadow-cyan-500/20 flex items-center gap-2 disabled:opacity-50 transition-all active:scale-[0.98]"
+            >
+                <Save size={16} />
+                {savingSection === section ? 'Menyimpan...' : 'Simpan'}
+            </button>
+        </div>
+    );
 
     return (
         <div className="p-6">
@@ -152,11 +197,13 @@ export default function SettingsPage() {
                             />
                         </div>
                     </div>
+                    <SaveButton onClick={handleSaveCompany} section="company" />
                 </div>
 
                 {/* Face Verification Settings */}
                 <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 p-6">
-                    <h2 className="text-lg font-semibold text-white mb-4">
+                    <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <ScanFace className="text-cyan-500" size={20} />
                         Verifikasi Wajah
                     </h2>
 
@@ -184,11 +231,13 @@ export default function SettingsPage() {
                             </p>
                         </div>
                     </div>
+                    <SaveButton onClick={handleSaveFace} section="face" />
                 </div>
 
                 {/* GPS Settings */}
                 <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 p-6">
-                    <h2 className="text-lg font-semibold text-white mb-4">
+                    <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <MapPin className="text-cyan-500" size={20} />
                         Geolokasi
                     </h2>
 
@@ -220,6 +269,7 @@ export default function SettingsPage() {
                             </p>
                         </div>
                     </div>
+                    <SaveButton onClick={handleSaveGPS} section="gps" />
                 </div>
 
                 {/* Kiosk Settings */}
@@ -269,17 +319,8 @@ export default function SettingsPage() {
                             </p>
                         </div>
                     </div>
+                    <SaveButton onClick={handleSaveKiosk} section="kiosk" />
                 </div>
-
-                {/* Save Button */}
-                <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-cyan-500/20 flex items-center justify-center gap-2 disabled:opacity-50 transition-all active:scale-[0.98]"
-                >
-                    <Save size={18} />
-                    {isSaving ? 'Menyimpan...' : 'Simpan Pengaturan'}
-                </button>
             </div>
         </div>
     );

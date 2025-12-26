@@ -49,6 +49,7 @@ type User struct {
 	Attendances            []Attendance   `gorm:"foreignKey:UserID" json:"attendances,omitempty"`
 	FacePhotos             []FacePhoto    `gorm:"foreignKey:UserID" json:"face_photos,omitempty"`
 	Office                 *Office        `gorm:"foreignKey:OfficeID" json:"office,omitempty"`
+	Employee               *Employee      `gorm:"foreignKey:UserID" json:"employee,omitempty"`
 }
 
 // Attendance represents a check-in/check-out record

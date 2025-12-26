@@ -270,17 +270,39 @@ func (h *AttendanceHandler) GetTodayStatus(c *gin.Context) {
 func (h *AttendanceHandler) GetAllToday(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	startDate := c.Query("start_date")
-	endDate := c.Query("end_date")
+	
+	filters := repository.AttendanceFilters{
+		StartDate: c.Query("start_date"),
+		EndDate:   c.Query("end_date"),
+		Position:  c.Query("position"),
+		OfficeID:  c.Query("office_id"),
+		Status:    c.Query("status"),
+		SortBy:    c.Query("sort_by"),
+		SortOrder: c.Query("sort_order"),
+	}
 
-	attendances, total, err := h.attendanceRepo.GetAllToday(c.Request.Context(), startDate, endDate, limit, offset)
+	attendances, total, err := h.attendanceRepo.FindAll(c.Request.Context(), filters, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get attendance records"})
+		return
+	}
+
+	// Get aggregation stats
+	totalLate, totalOnTime, err := h.attendanceRepo.GetReportStats(c.Request.Context(), filters)
+	if err != nil {
+		// Log error but don't fail the request? Or fail? 
+		// Failing is probably safer to avoid misleading data.
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get attendance stats"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"attendances": attendances,
 		"total":       total,
+		"summary": gin.H{
+			"total_late":    totalLate,
+			"total_on_time": totalOnTime,
+			"total_present": totalLate + totalOnTime,
+		},
 	})
 }

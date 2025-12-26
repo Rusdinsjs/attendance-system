@@ -32,6 +32,8 @@ const isNavGroup = (entry: NavEntry): entry is NavGroup => {
 // Navigation structure with nested menus
 const navItems: NavEntry[] = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/employees', icon: Briefcase, label: 'Data Karyawan' },
+    { to: '/users', icon: Users, label: 'Users' },
     {
         id: 'approval',
         label: 'Approval',
@@ -48,8 +50,6 @@ const navItems: NavEntry[] = [
         label: 'Pengaturan',
         icon: Settings,
         children: [
-            { to: '/employees', icon: Briefcase, label: 'Data Karyawan' },
-            { to: '/users', icon: Users, label: 'Users' },
             { to: '/offices', icon: Building, label: 'Lokasi Kantor' },
             { to: '/kiosks', icon: Monitor, label: 'Manajemen Kiosk' },
             { to: '/settings', icon: Cog, label: 'System' },

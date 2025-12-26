@@ -2,8 +2,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { adminAPI } from '../api/client';
-import type { Attendance } from '../api/client';
-import { Calendar, Download, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Download, Filter, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
 
 export default function ReportsPage() {
     const [dateRange, setDateRange] = useState({
@@ -11,15 +10,41 @@ export default function ReportsPage() {
         end: new Date().toISOString().split('T')[0],
     });
 
+    const [filters, setFilters] = useState({
+        position: '',
+        officeID: '',
+        status: '',
+    });
+
+    const [sort, setSort] = useState({
+        sortBy: 'check_in_time',
+        sortOrder: 'DESC' as 'ASC' | 'DESC',
+    });
+
     const [page, setPage] = useState(1);
     const limit = 10;
 
+    // Fetch Offices for Filter
+    const { data: officesData } = useQuery({
+        queryKey: ['offices'],
+        queryFn: async () => {
+            const res = await adminAPI.getOffices({ limit: 100 });
+            return res.data;
+        }
+    });
+    const offices = officesData?.offices || [];
+
     const { data: reportData, isLoading } = useQuery({
-        queryKey: ['attendanceReport', dateRange, page],
+        queryKey: ['attendanceReport', dateRange, filters, sort, page],
         queryFn: async () => {
             const res = await adminAPI.getTodayAttendance({
                 start_date: dateRange.start,
                 end_date: dateRange.end,
+                position: filters.position,
+                office_id: filters.officeID,
+                status: filters.status as 'late' | 'on_time' | undefined,
+                sort_by: sort.sortBy,
+                sort_order: sort.sortOrder,
                 limit,
                 offset: (page - 1) * limit
             });
@@ -30,6 +55,19 @@ export default function ReportsPage() {
     const attendances = reportData?.attendances || [];
     const total = reportData?.total || 0;
     const totalPages = Math.ceil(total / limit);
+    const summary = reportData?.summary || { total_present: 0, total_on_time: 0, total_late: 0 };
+
+    const handleSort = (field: string) => {
+        setSort(prev => ({
+            sortBy: field,
+            sortOrder: prev.sortBy === field && prev.sortOrder === 'DESC' ? 'ASC' : 'DESC'
+        }));
+    };
+
+    const SortIcon = ({ field }: { field: string }) => {
+        if (sort.sortBy !== field) return <div className="w-4 h-4" />;
+        return sort.sortOrder === 'ASC' ? <ArrowUp size={14} /> : <ArrowDown size={14} />;
+    };
 
     const formatTime = (time: string | null) => {
         if (!time) return '-';
@@ -44,10 +82,12 @@ export default function ReportsPage() {
     const exportToCSV = () => {
         if (!attendances || attendances.length === 0) return;
 
-        const headers = ['Tanggal', 'Nama', 'Check In', 'Check Out', 'Status'];
-        const rows = attendances.map((a: Attendance) => [
+        const headers = ['Tanggal', 'Nama', 'Jabatan', 'Kantor', 'Check In', 'Check Out', 'Status'];
+        const rows = attendances.map((a: any) => [
             formatDate(a.check_in_time),
-            a.user_name || '',
+            a.user?.name || a.user_name || '',
+            a.user?.employee?.position || '-',
+            a.user?.office?.name || '-',
             formatTime(a.check_in_time),
             formatTime(a.check_out_time),
             a.is_late ? 'Terlambat' : 'Hadir',
@@ -80,7 +120,8 @@ export default function ReportsPage() {
             </div>
 
             {/* Filters */}
-            <div className="bg-slate-900 rounded-xl p-6 shadow-lg border border-slate-800 mb-6">
+            <div className="bg-slate-900 rounded-xl p-6 shadow-lg border border-slate-800 mb-6 space-y-4">
+                {/* Date Range */}
                 <div className="flex items-center gap-4 flex-wrap">
                     <div className="flex items-center gap-2">
                         <Calendar size={18} className="text-slate-400" />
@@ -105,9 +146,55 @@ export default function ReportsPage() {
                         }}
                         className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white appearance-none"
                     />
-                    <button className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition border border-slate-700">
-                        <Filter size={16} />
-                        Filter
+                </div>
+
+                {/* Advanced Filters */}
+                <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                        <Filter size={18} className="text-slate-400" />
+                        <span className="text-sm text-slate-400">Filter:</span>
+                    </div>
+
+                    {/* Position Filter */}
+                    <input
+                        type="text"
+                        placeholder="Jabatan..."
+                        value={filters.position}
+                        onChange={(e) => setFilters(prev => ({ ...prev, position: e.target.value }))}
+                        className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white placeholder-slate-600"
+                    />
+
+                    {/* Office Filter */}
+                    <select
+                        value={filters.officeID}
+                        onChange={(e) => setFilters(prev => ({ ...prev, officeID: e.target.value }))}
+                        className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white appearance-none"
+                    >
+                        <option value="">Semua Kantor</option>
+                        {offices.map((office: any) => (
+                            <option key={office.id} value={office.id}>{office.name}</option>
+                        ))}
+                    </select>
+
+                    {/* Status Filter */}
+                    <select
+                        value={filters.status}
+                        onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                        className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white appearance-none"
+                    >
+                        <option value="">Semua Status</option>
+                        <option value="late">Terlambat</option>
+                        <option value="on_time">Tepat Waktu</option>
+                    </select>
+
+                    <button
+                        onClick={() => {
+                            setFilters({ position: '', officeID: '', status: '' });
+                            setSort({ sortBy: 'check_in_time', sortOrder: 'DESC' });
+                        }}
+                        className="text-sm text-cyan-400 hover:text-cyan-300 transition"
+                    >
+                        Reset
                     </button>
                 </div>
             </div>
@@ -116,18 +203,18 @@ export default function ReportsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-800">
                     <p className="text-sm text-slate-400">Total Kehadiran</p>
-                    <p className="text-2xl font-bold text-white mt-1">{attendances?.length || 0}</p>
+                    <p className="text-2xl font-bold text-white mt-1">{summary.total_present}</p>
                 </div>
                 <div className="bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-800">
                     <p className="text-sm text-slate-400">Tepat Waktu</p>
                     <p className="text-2xl font-bold text-emerald-400 mt-1">
-                        {attendances?.filter((a: Attendance) => a.check_in_time && !a.is_late)?.length || 0}
+                        {summary.total_on_time}
                     </p>
                 </div>
                 <div className="bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-800">
                     <p className="text-sm text-slate-400">Terlambat</p>
                     <p className="text-2xl font-bold text-amber-400 mt-1">
-                        {attendances?.filter((a: Attendance) => a.is_late)?.length || 0}
+                        {summary.total_late}
                     </p>
                 </div>
             </div>
@@ -139,38 +226,63 @@ export default function ReportsPage() {
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full">
-                            <thead className="bg-slate-950/50">
+                            <thead className="bg-slate-950/50 text-xs text-slate-400 uppercase tracking-wider">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Tanggal</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Nama</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Check In</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Check Out</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Durasi</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Status</th>
+                                    <th
+                                        onClick={() => handleSort('check_in_time')}
+                                        className="px-6 py-3 text-left font-medium cursor-pointer hover:text-white transition group select-none"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            Tanggal & Jam
+                                            <SortIcon field="check_in_time" />
+                                        </div>
+                                    </th>
+                                    <th
+                                        onClick={() => handleSort('name')}
+                                        className="px-6 py-3 text-left font-medium cursor-pointer hover:text-white transition group select-none"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            Nama
+                                            <SortIcon field="name" />
+                                        </div>
+                                    </th>
+                                    <th
+                                        onClick={() => handleSort('position')}
+                                        className="px-6 py-3 text-left font-medium cursor-pointer hover:text-white transition group select-none"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            Jabatan
+                                            <SortIcon field="position" />
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="px-6 py-3 text-left font-medium"
+                                    >
+                                        Kantor
+                                    </th>
+                                    <th className="px-6 py-3 text-left font-medium">Check Out</th>
+                                    <th className="px-6 py-3 text-left font-medium">Status</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800">
-                                {attendances?.map((a: Attendance) => {
-                                    const duration = a.check_in_time && a.check_out_time
-                                        ? Math.round((new Date(a.check_out_time).getTime() - new Date(a.check_in_time).getTime()) / 3600000 * 10) / 10
-                                        : null;
-
+                                {attendances?.map((a: any) => {
                                     return (
-                                        <tr key={a.id} className="hover:bg-slate-800/50 transition-colors">
-                                            <td className="px-6 py-4 whitespace-nowrap text-slate-400">
-                                                {formatDate(a.check_in_time)}
+                                        <tr key={a.id} className="hover:bg-slate-800/50 transition-colors text-sm">
+                                            <td className="px-6 py-4 whitespace-nowrap text-slate-300">
+                                                <div>{formatDate(a.check_in_time)}</div>
+                                                <div className="text-xs text-slate-500">{formatTime(a.check_in_time)}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap font-medium text-white">
                                                 {a.user?.name || a.user_name || 'Unknown'}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-slate-400">
-                                                {formatTime(a.check_in_time)}
+                                                {a.user?.employee?.position || '-'}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-slate-400">
+                                                {a.user?.office?.name || '-'}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-slate-400">
                                                 {formatTime(a.check_out_time)}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-slate-400">
-                                                {duration ? `${duration} jam` : '-'}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 {a.is_late ? (
@@ -185,7 +297,7 @@ export default function ReportsPage() {
                                 {(!attendances || attendances.length === 0) && (
                                     <tr>
                                         <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
-                                            Tidak ada data untuk periode ini
+                                            Tidak ada data untuk filter ini
                                         </td>
                                     </tr>
                                 )}
