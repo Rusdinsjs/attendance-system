@@ -265,10 +265,15 @@ func (h *AttendanceHandler) GetTodayStatus(c *gin.Context) {
 	})
 }
 
-// GetAllToday returns all attendance records for today (admin/HR only)
-// GET /api/attendance/all-today
+// GetAllToday returns attendance records with filters and pagination (admin/HR only)
+// GET /api/admin/attendance/today
 func (h *AttendanceHandler) GetAllToday(c *gin.Context) {
-	attendances, err := h.attendanceRepo.GetAllToday(c.Request.Context())
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	attendances, total, err := h.attendanceRepo.GetAllToday(c.Request.Context(), startDate, endDate, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get attendance records"})
 		return
@@ -276,6 +281,6 @@ func (h *AttendanceHandler) GetAllToday(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"attendances": attendances,
-		"count":       len(attendances),
+		"total":       total,
 	})
 }

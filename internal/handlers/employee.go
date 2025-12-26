@@ -13,6 +13,7 @@ import (
 	"github.com/attendance-system/internal/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"encoding/json"
 )
 
 type EmployeeHandler struct {
@@ -183,6 +184,15 @@ func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 		Gender:           c.Query("gender"),
 	}
 
+	// Parse Dynamic Filters JSON
+	dynamicFiltersJson := c.Query("filters")
+	if dynamicFiltersJson != "" {
+		var dynamicFilters []repository.DynamicFilter
+		if err := json.Unmarshal([]byte(dynamicFiltersJson), &dynamicFilters); err == nil {
+			filters.DynamicFilters = dynamicFilters
+		}
+	}
+
 	employees, total, err := h.employeeRepo.FindAll(c.Request.Context(), filters, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch employees"})
@@ -290,99 +300,149 @@ func (h *EmployeeHandler) ImportEmployees(c *gin.Context) {
 		return
 	}
 
+	if len(records) < 2 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "CSV file is empty or missing header"})
+		return
+	}
+
+	headers := records[0]
+	headerMap := make(map[string]int)
+	for i, h := range headers {
+		headerMap[h] = i
+	}
+
+	// Helper to get value securely
+	getValue := func(row []string, colName string) string {
+		if idx, ok := headerMap[colName]; ok && idx < len(row) {
+			return row[idx]
+		}
+		return ""
+	}
+
 	var importedCount int
 	var skippedCount int
 	var errors []string
 
-	// Basic validation: Check header
-	if len(records) > 0 {
-		// Expected header: NIK, Name, Email, Position, OfficeID, JoinDate (YYYY-MM-DD)
-		// We assume specific column order or simple mapping for now
-	}
-
-	for i, record := range records {
-		if i == 0 {
-			continue // Skip header
-		}
-		if len(record) < 5 {
-			errors = append(errors, fmt.Sprintf("Row %d: Insufficient columns", i+1))
+	for i := 1; i < len(records); i++ {
+		record := records[i]
+		
+		// Mandatory Fields
+		nik := getValue(record, "NIK")
+		name := getValue(record, "Nama Lengkap")
+		
+		if nik == "" || name == "" {
+			errors = append(errors, fmt.Sprintf("Row %d: Missing NIK or Name", i+1))
+			skippedCount++
 			continue
 		}
 
-		nik := record[0]
-		name := record[1]
-		email := record[2]
-		position := record[3]
-		officeIDStr := record[4]
-		joinDateStr := record[5]
+		// Basic Data
+		email := getValue(record, "Email") // Optional, but needed for User creation
+		position := getValue(record, "Posisi")
+		officeIDStr := getValue(record, "ID Kantor")
+		joinDateStr := getValue(record, "Tanggal Bergabung (YYYY-MM-DD)")
 
-		// 1. Validate duplicates (NIK or Email)
-		// Optimally we'd do a batch check, but for simplicity we check properly inside repo or here
-		// For now let's rely on DB unique constraints or simple pre-check if possible
-		// We'll skip complex pre-check for MVP and handle DB errors
+		// Check Duplicates (Basic check via Repo would be better, but for MVP check DB error)
 
-		// 2. Parse Data
-		officeID, err := uuid.Parse(officeIDStr)
-		if err != nil {
-			// Try to find office by name? For now, require UUID or skip
-			// Fallback: Use user's office or default?
-			errors = append(errors, fmt.Sprintf("Row %d: Invalid Office ID", i+1))
+		// 1. Parsing Office ID
+		var officeID uuid.UUID
+		if officeIDStr != "" {
+			var err error
+			officeID, err = uuid.Parse(officeIDStr)
+			if err != nil {
+				// Try to lookup by name? For now just log warning and set nil/default
+				// Ideally we should fail row or default to something.
+				// Let's rely on fallback logic or fail row.
+				// For now: Fail row if Office ID is provided but invalid
+				errors = append(errors, fmt.Sprintf("Row %d: Invalid Office ID", i+1))
+				skippedCount++
+				continue
+			}
+		} else {
+			// Get Default Office or First Available?
+			// For bulk import, Office ID really should be mandatory or we assign a default.
+			// Let's assume mandatory for now as per current logic.
+			errors = append(errors, fmt.Sprintf("Row %d: Missing Office ID", i+1))
+			skippedCount++
 			continue
 		}
 
+		// 2. Parse Date
 		joinDate, err := time.Parse("2006-01-02", joinDateStr)
 		if err != nil {
-			joinDate = time.Now() // Default or error
+			joinDate = time.Now() 
 		}
 
+		empID := uuid.New()
+		
+		// 3. Populate All Fields
 		emp := models.Employee{
-			ID:               uuid.New(),
+			ID:               empID,
 			NIK:              nik,
 			Name:             name,
-			// Email is not directly on Employee, it is on User and will be linked via UserID
-			// Logic: We might need to create a User as well? 
-			// For now, let's just create Employee. The User linking might happen later.
-			// Wait, Employee struct doesn't have Email field directly for storage (it uses User.Email), 
-			// BUT our CreateEmployeeRequest uses it to create User.
-			// If we just create Employee, we should store email in... wait, checking models.
-			// Employee model doesn't have Email column? Checking...
-			// Checking models.go lines 177+... 
-			// It has `User *User`. It DOES NOT have Email directly. 
-			// Wait, previous `CreateEmployeeRequest` had Email.
-			// If we import Employees, do we create Users?
-			// The Requirement says "Bulk Employee Import". Usually this implies creating the master data.
-			// Let's assume we create Employee records. 
-			// If Employee model doesn't have Email, we should strictly follow the schema.
-			// Actually, looking at `models.go` again...
-			// Line 183: NIK string
-			// Line 185: Name string
-			// Line 186: PhotoURL string
-			// It does NOT have Email.
-			// So we cannot store Email on Employee unless we create a User or add Email to Employee.
-			// Ideally Employee Master Data should have Email to link later.
-			// Let's check `CreateEmployeeRequest` again. It has `Email`. 
-			// It creates a User if `CreateUser` is true.
-			// For Bulk Import, maybe we just create Employee data primarily.
-			// BUT, how do we link to User later if we don't have Email stored?
-			// Maybe we should add Email to Employee model as well?
-			// OR we auto-create Users?
-			// Auto-creating users (inactive?) seems safer.
-			// Let's create User + Employee pair for each row.
-			
 			Position:         position,
 			OfficeID:         officeID,
 			StartDate:        joinDate,
-			EmploymentStatus: "PKWT", // Default
+			EmploymentStatus: getValue(record, "Status Karyawan"), // PKWT/Tetap
+			
+			// Biodata
+			KTPNumber:       getValue(record, "No KTP"),
+			Gender:          getValue(record, "Gender (L/P)"),
+			PlaceOfBirth:    getValue(record, "Tempat Lahir"),
+			MaritalStatus:   getValue(record, "Status Pernikahan"),
+			Address:         getValue(record, "Alamat"),
+			ResidenceStatus: getValue(record, "Status Tempat Tinggal"),
+			Religion:        getValue(record, "Agama"),
+			BloodType:       getValue(record, "Golongan Darah"),
+			
+			// Emergency
+			EmergencyContactName:     getValue(record, "Nama Kontak Darurat"),
+			EmergencyContactPhone:    getValue(record, "No HP Kontak Darurat"),
+			EmergencyContactRelation: getValue(record, "Hubungan Kontak Darurat"),
+			
+			// Bank & Tax
+			BankAccount:     getValue(record, "No Rekening"),
+			BankName:        getValue(record, "Nama Bank"),
+			BPJSKesehatan:   getValue(record, "BPJS Kesehatan"),
+			BPJSTenagaKerja: getValue(record, "BPJS Ketenagakerjaan"),
+			NPWP:            getValue(record, "NPWP"),
+			
+			// Education
+			Education:    getValue(record, "Pendidikan Terakhir"),
+			Grade:        getValue(record, "Grade"),
+			Competencies: getValue(record, "Kompetensi"),
 		}
 
-		// Create User (Inactive/Default)
-		// We need to generate a dummy password or handle it.
-		// Let's create User with default password "123456" and force change later?
-		// Or just create Employee and let them claim?
-		// Without Email on Employee, we can't let them claim easily.
-		// Let's create User.
+		// Parse Floats/Ints
+		emp.ChildrenCount, _ = strconv.Atoi(getValue(record, "Jumlah Anak"))
+		emp.BasicSalary, _ = strconv.ParseFloat(getValue(record, "Gaji Pokok"), 64)
+		allowedRadius, _ := strconv.Atoi(getValue(record, "Radius (m)"))
+		if allowedRadius == 0 {
+			allowedRadius = 50 // Default
+		}
+
+		// Parse Dates
+		if dobStr := getValue(record, "Tanggal Lahir (YYYY-MM-DD)"); dobStr != "" {
+			if dob, err := time.Parse("2006-01-02", dobStr); err == nil {
+				emp.DateOfBirth = dob
+			}
+		}
+		if endConStr := getValue(record, "Akhir Kontrak (YYYY-MM-DD)"); endConStr != "" {
+			if endCon, err := time.Parse("2006-01-02", endConStr); err == nil {
+				emp.EndContractDate = &endCon
+			}
+		}
+
+		// Create User Account Logic
+		// If Email is provided, create User. If not, maybe just Employee?
+		// Current system ties them tightly. Let's force User creation keying off email or NIK.
+		// If email missing, generate dummy? "nik@system.local" ?
+		if email == "" {
+			email = fmt.Sprintf("%s@placeholder.com", nik)
+		}
+
+		hashedPwd, _ := utils.HashPassword("123456") // Default Password
 		
-		hashedPwd, _ := utils.HashPassword("123456")
 		user := models.User{
 			Name:         name,
 			Email:        email,
@@ -391,20 +451,23 @@ func (h *EmployeeHandler) ImportEmployees(c *gin.Context) {
 			EmployeeID:   nik,
 			IsActive:     true,
 			OfficeID:     &officeID,
+			AllowedRadius: allowedRadius,
 		}
-		
+
 		if err := h.userRepo.Create(c.Request.Context(), &user); err != nil {
-			errors = append(errors, fmt.Sprintf("Row %d: Failed to create user (%s)", i+1, err.Error()))
+			// Duplicate email/nik likely
+			errors = append(errors, fmt.Sprintf("Row %d: Failed to create user (%v)", i+1, err))
+			skippedCount++
 			continue
 		}
 
 		userID := user.ID
 		emp.UserID = &userID
-		
+
 		if err := h.employeeRepo.Create(c.Request.Context(), &emp); err != nil {
-			// Rollback user?
-			h.userRepo.Delete(c.Request.Context(), userID) // Simple compensation
-			errors = append(errors, fmt.Sprintf("Row %d: Failed to create employee (%s)", i+1, err.Error()))
+			h.userRepo.Delete(c.Request.Context(), userID) // Rollback User
+			errors = append(errors, fmt.Sprintf("Row %d: Failed to create employee (%v)", i+1, err))
+			skippedCount++
 			continue
 		}
 

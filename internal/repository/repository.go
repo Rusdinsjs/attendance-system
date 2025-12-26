@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"time"
+	"fmt"
 
 	"github.com/attendance-system/internal/models"
 	"github.com/google/uuid"
@@ -12,6 +13,19 @@ import (
 // UserRepository handles database operations for users
 type UserRepository struct {
 	db *gorm.DB
+}
+
+// UserFilters contains filter criteria for users
+type UserFilters struct {
+	Name             string
+	Email            string
+	Role             string
+	OfficeID         string
+	IsActive         *bool
+	Position         string
+	Gender           string
+	EmploymentStatus string
+	DynamicFilters   []DynamicFilter
 }
 
 // NewUserRepository creates a new user repository
@@ -66,11 +80,73 @@ func (r *UserRepository) UpdateFaceEmbeddings(ctx context.Context, userID uuid.U
 		Update("face_embeddings", embeddings).Error
 }
 
-// GetAll returns all active users
+// GetAll returns all active users (simple version)
 func (r *UserRepository) GetAll(ctx context.Context) ([]models.User, error) {
 	var users []models.User
 	err := r.db.WithContext(ctx).Where("is_active = ?", true).Find(&users).Error
 	return users, err
+}
+
+// FindAll returns users with optional filtering and pagination
+func (r *UserRepository) FindAll(ctx context.Context, filters UserFilters, limit, offset int) ([]models.User, int64, error) {
+	var users []models.User
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.User{}).Preload("Office")
+
+	if filters.Name != "" {
+		query = query.Where("name ILIKE ?", "%"+filters.Name+"%")
+	}
+	if filters.Email != "" {
+		query = query.Where("email ILIKE ?", "%"+filters.Email+"%")
+	}
+	if filters.Role != "" {
+		query = query.Where("role = ?", filters.Role)
+	}
+	if filters.OfficeID != "" {
+		query = query.Where("office_id = ?", filters.OfficeID)
+	}
+	if filters.IsActive != nil {
+		query = query.Where("users.is_active = ?", *filters.IsActive)
+	}
+
+	// Join with Employees for extra filters
+	if filters.Position != "" || filters.Gender != "" || filters.EmploymentStatus != "" {
+		query = query.Joins("LEFT JOIN employees ON employees.user_id = users.id")
+		
+		if filters.Position != "" {
+			query = query.Where("employees.position ILIKE ?", "%"+filters.Position+"%")
+		}
+		if filters.Gender != "" {
+			query = query.Where("employees.gender = ?", filters.Gender)
+		}
+		if filters.EmploymentStatus != "" {
+			query = query.Where("employees.employment_status = ?", filters.EmploymentStatus)
+		}
+	}
+
+	// Dynamic Filters
+	for _, f := range filters.DynamicFilters {
+		switch f.Operator {
+		case "eq":
+			query = query.Where(fmt.Sprintf("%s = ?", f.Field), f.Value)
+		case "neq":
+			query = query.Where(fmt.Sprintf("%s != ?", f.Field), f.Value)
+		case "like":
+			query = query.Where(fmt.Sprintf("%s ILIKE ?", f.Field), "%"+f.Value+"%")
+		case "gt":
+			query = query.Where(fmt.Sprintf("%s > ?", f.Field), f.Value)
+		case "lt":
+			query = query.Where(fmt.Sprintf("%s < ?", f.Field), f.Value)
+		}
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&users).Error
+	return users, total, err
 }
 
 // UpdatePasswordHash updates user's password hash
@@ -85,21 +161,30 @@ func (r *UserRepository) Delete(ctx context.Context, userID uuid.UUID) error {
 	return r.db.WithContext(ctx).Delete(&models.User{}, userID).Error
 }
 
-// FindByFaceStatus finds users by face verification status
-func (r *UserRepository) FindByFaceStatus(ctx context.Context, status string) ([]models.User, error) {
+// FindByFaceStatus finds users by face verification status with pagination
+func (r *UserRepository) FindByFaceStatus(ctx context.Context, status string, limit, offset int) ([]models.User, int64, error) {
 	var users []models.User
-	err := r.db.WithContext(ctx).
-		Where("face_verification_status = ?", status).
-		Order("updated_at DESC").
+	var total int64
+	
+	query := r.db.WithContext(ctx).Model(&models.User{}).
+		Where("face_verification_status = ?", status)
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err := query.Order("updated_at DESC").
+		Limit(limit).
+		Offset(offset).
 		Find(&users).Error
-	return users, err
+	return users, total, err
 }
 
 // FindEmployeesForRegistration finds users eligible for face registration
 func (r *UserRepository) FindEmployeesForRegistration(ctx context.Context) ([]models.User, error) {
 	var users []models.User
 	err := r.db.WithContext(ctx).
-		Where("is_active = ? AND face_verification_status IN ?", true, []string{"not_registered", "rejected"}).
+		Where("is_active = ? AND face_verification_status IN ?", true, []string{"not_registered", "rejected", "none"}).
 		Order("name ASC").
 		Find(&users).Error
 	return users, err
@@ -193,18 +278,30 @@ func (r *AttendanceRepository) GetHistory(ctx context.Context, userID uuid.UUID,
 	return attendances, err
 }
 
-// GetAllToday returns all attendance records for today (for admin dashboard)
-func (r *AttendanceRepository) GetAllToday(ctx context.Context) ([]models.Attendance, error) {
+// GetAllToday returns attendance records with filters and pagination
+func (r *AttendanceRepository) GetAllToday(ctx context.Context, startDate, endDate string, limit, offset int) ([]models.Attendance, int64, error) {
 	var attendances []models.Attendance
-	today := time.Now().Format("2006-01-02")
+	var total int64
 	
-	err := r.db.WithContext(ctx).
-		Preload("User").
-		Where("DATE(check_in_time) = ?", today).
-		Order("check_in_time DESC").
+	query := r.db.WithContext(ctx).Model(&models.Attendance{}).Preload("User")
+	
+	if startDate != "" && endDate != "" {
+		query = query.Where("DATE(check_in_time) BETWEEN ? AND ?", startDate, endDate)
+	} else {
+		today := time.Now().Format("2006-01-02")
+		query = query.Where("DATE(check_in_time) = ?", today)
+	}
+	
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err := query.Order("check_in_time DESC").
+		Limit(limit).
+		Offset(offset).
 		Find(&attendances).Error
 	
-	return attendances, err
+	return attendances, total, err
 }
 
 // RefreshTokenRepository handles database operations for refresh tokens
@@ -329,15 +426,24 @@ func (r *TransferRequestRepository) FindPendingByUserID(ctx context.Context, use
 	return &request, nil
 }
 
-// FindByStatus finds all transfer requests by status
-func (r *TransferRequestRepository) FindByStatus(ctx context.Context, status string) ([]models.OfficeTransferRequest, error) {
+// FindByStatus finds transfer requests by status with pagination
+func (r *TransferRequestRepository) FindByStatus(ctx context.Context, status string, limit, offset int) ([]models.OfficeTransferRequest, int64, error) {
 	var requests []models.OfficeTransferRequest
-	err := r.db.WithContext(ctx).
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.OfficeTransferRequest{}).
 		Preload("User").
-		Where("status = ?", status).
-		Order("created_at DESC").
+		Where("status = ?", status)
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err := query.Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
 		Find(&requests).Error
-	return requests, err
+	return requests, total, err
 }
 
 // Update updates a transfer request
@@ -375,11 +481,22 @@ func (r *KioskRepository) UpdateLastSeen(ctx context.Context, id uuid.UUID) erro
 	return r.db.WithContext(ctx).Model(&models.Kiosk{}).Where("id = ?", id).Update("last_seen", time.Now()).Error
 }
 
-// GetAll returns all kiosks
-func (r *KioskRepository) GetAll(ctx context.Context) ([]models.Kiosk, error) {
+// GetAll returns kiosks with pagination
+func (r *KioskRepository) GetAll(ctx context.Context, limit, offset int) ([]models.Kiosk, int64, error) {
 	var kiosks []models.Kiosk
-	err := r.db.WithContext(ctx).Preload("Office").Find(&kiosks).Error
-	return kiosks, err
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.Kiosk{}).Preload("Office")
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err := query.Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&kiosks).Error
+	return kiosks, total, err
 }
 
 // Update updates a kiosk

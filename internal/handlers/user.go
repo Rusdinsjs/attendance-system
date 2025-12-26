@@ -12,6 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"strconv"
+	"encoding/json"
 )
 
 // UserHandler handles user-related endpoints
@@ -135,13 +137,43 @@ func (h *UserHandler) SyncFaceData(c *gin.Context) {
 // GetAllUsers returns all users (admin only)
 // GET /api/users
 func (h *UserHandler) GetAllUsers(c *gin.Context) {
-	users, err := h.userRepo.GetAll(c.Request.Context())
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+
+	filters := repository.UserFilters{
+		Name:             c.Query("name"),
+		Email:            c.Query("email"),
+		Role:             c.Query("role"),
+		OfficeID:         c.Query("office_id"),
+		Position:         c.Query("position"),
+		Gender:           c.Query("gender"),
+		EmploymentStatus: c.Query("employment_status"),
+	}
+
+	if activeStr := c.Query("is_active"); activeStr != "" {
+		active := activeStr == "true"
+		filters.IsActive = &active
+	}
+
+	// Parse Dynamic Filters JSON
+	dynamicFiltersJson := c.Query("filters")
+	if dynamicFiltersJson != "" {
+		var dynamicFilters []repository.DynamicFilter
+		if err := json.Unmarshal([]byte(dynamicFiltersJson), &dynamicFilters); err == nil {
+			filters.DynamicFilters = dynamicFilters
+		}
+	}
+
+	users, total, err := h.userRepo.FindAll(c.Request.Context(), filters, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get users"})
 		return
 	}
 
-	c.JSON(http.StatusOK, users)
+	c.JSON(http.StatusOK, gin.H{
+		"data":  users,
+		"total": total,
+	})
 }
 
 // ChangePasswordRequest represents the change password payload

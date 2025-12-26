@@ -3,7 +3,7 @@ import { Html5QrcodeScanner } from 'html5-qrcode';
 import Webcam from 'react-webcam';
 import {
     Clock, MapPin, Scan, CheckCircle2, XCircle,
-    Settings, ShieldCheck, ChevronRight, RefreshCw, LogIn, LogOut, UserPlus, Camera
+    Settings, ShieldCheck, ChevronRight, RefreshCw, LogIn, LogOut, UserPlus, Camera, Search
 } from 'lucide-react';
 
 // API base URL
@@ -644,39 +644,61 @@ const KioskPage: React.FC = () => {
                                 {registerStep === 1 ? (
                                     <>
                                         <div className="space-y-4">
-                                            <input
-                                                type="text"
-                                                placeholder="Cari NIK atau Nama..."
-                                                value={searchTerm}
-                                                onChange={(e) => setSearchTerm(e.target.value)}
-                                                className="w-full bg-slate-800 border-2 border-slate-700 focus:border-cyan-500 rounded-xl px-4 py-3 text-white outline-none transition"
-                                                autoFocus
-                                            />
-                                            <div className="border border-slate-700 rounded-xl overflow-hidden max-h-60 overflow-y-auto bg-slate-800/50">
-                                                {employeeList.filter(e =>
-                                                    e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                                    e.employee_id.toLowerCase().includes(searchTerm.toLowerCase())
-                                                ).length === 0 ? (
-                                                    <div className="p-4 text-center text-slate-500">Tidak ada data ditemukan</div>
-                                                ) : (
-                                                    employeeList.filter(e =>
-                                                        e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                                        e.employee_id.toLowerCase().includes(searchTerm.toLowerCase())
-                                                    ).map(emp => (
-                                                        <button
-                                                            key={emp.id}
-                                                            onClick={() => {
-                                                                setSelectedEmployee(emp);
-                                                                setRegisterStep(2);
-                                                            }}
-                                                            className="w-full text-left p-4 hover:bg-slate-700 border-b border-slate-700 last:border-0 transition"
-                                                        >
-                                                            <div className="font-bold text-white">{emp.name}</div>
-                                                            <div className="text-xs text-slate-400 font-mono">{emp.employee_id}</div>
-                                                        </button>
-                                                    ))
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Cari NIK atau Nama..."
+                                                    value={searchTerm}
+                                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                                    className="w-full bg-slate-800 border-2 border-slate-700 focus:border-cyan-500 rounded-xl px-4 py-3 text-white outline-none transition"
+                                                    autoFocus
+                                                />
+                                                {searchTerm && (
+                                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white cursor-pointer" onClick={() => setSearchTerm('')}>
+                                                        <XCircle size={18} />
+                                                    </div>
                                                 )}
                                             </div>
+
+                                            {searchTerm ? (
+                                                <div className="border border-slate-700 rounded-xl overflow-hidden max-h-60 overflow-y-auto bg-slate-800/90 backdrop-blur-sm shadow-xl z-20">
+                                                    {employeeList.filter(e => {
+                                                        const term = searchTerm.toLowerCase();
+                                                        return (e.name?.toLowerCase() || '').includes(term) ||
+                                                            (e.employee_id?.toLowerCase() || '').includes(term);
+                                                    }).length === 0 ? (
+                                                        <div className="p-4 text-center text-slate-500">
+                                                            <p>Tidak ada karyawan ditemukan</p>
+                                                        </div>
+                                                    ) : (
+                                                        employeeList.filter(e => {
+                                                            const term = searchTerm.toLowerCase();
+                                                            return (e.name?.toLowerCase() || '').includes(term) ||
+                                                                (e.employee_id?.toLowerCase() || '').includes(term);
+                                                        }).slice(0, 10).map(emp => (
+                                                            <button
+                                                                key={emp.id}
+                                                                onClick={() => {
+                                                                    setSelectedEmployee(emp);
+                                                                    setRegisterStep(2);
+                                                                }}
+                                                                className="w-full text-left p-4 hover:bg-slate-700/80 border-b border-slate-700/50 last:border-0 transition flex justify-between items-center group"
+                                                            >
+                                                                <div>
+                                                                    <div className="font-bold text-white group-hover:text-cyan-400 transition">{emp.name}</div>
+                                                                    <div className="text-xs text-slate-400 font-mono bg-slate-900/50 px-2 py-0.5 rounded inline-block mt-1">{emp.employee_id}</div>
+                                                                </div>
+                                                                <ChevronRight size={16} className="text-slate-600 group-hover:text-cyan-400 transition" />
+                                                            </button>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-8 text-slate-500 border border-slate-800 rounded-xl bg-slate-800/20 border-dashed">
+                                                    <Search size={32} className="mx-auto mb-2 opacity-50" />
+                                                    <p className="text-sm">Ketik Nama atau NIK untuk mencari karyawan</p>
+                                                </div>
+                                            )}
                                         </div>
                                     </>
                                 ) : (

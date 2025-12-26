@@ -20,10 +20,18 @@ func (r *OfficeRepository) Create(ctx context.Context, office *models.Office) er
 	return r.db.WithContext(ctx).Create(office).Error
 }
 
-func (r *OfficeRepository) FindAll(ctx context.Context) ([]models.Office, error) {
+func (r *OfficeRepository) FindAll(ctx context.Context, limit, offset int) ([]models.Office, int64, error) {
 	var offices []models.Office
-	err := r.db.WithContext(ctx).Find(&offices).Error
-	return offices, err
+	var total int64
+	
+	query := r.db.WithContext(ctx).Model(&models.Office{})
+	
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err := query.Limit(limit).Offset(offset).Find(&offices).Error
+	return offices, total, err
 }
 
 func (r *OfficeRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.Office, error) {

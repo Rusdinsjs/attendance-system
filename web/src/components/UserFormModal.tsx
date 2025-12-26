@@ -22,7 +22,6 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
     const [officeId, setOfficeId] = useState<string>('');
     const [offices, setOffices] = useState<Office[]>([]);
     const [employees, setEmployees] = useState<Employee[]>([]);
-    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(''); // For the select dropdown value
 
     // Avatar state
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -63,7 +62,6 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
             setPassword('');
             setPreviewUrl('');
             setOfficeId('');
-            setSelectedEmployeeId('');
         }
         setAvatarFile(null);
         setError('');
@@ -189,39 +187,13 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
                                 <label className="block text-sm font-medium text-slate-400 mb-1">
                                     Employee ID
                                 </label>
-                                {(!user && role === 'employee') ? (
-                                    <select
-                                        value={selectedEmployeeId}
-                                        onChange={(e) => {
-                                            const empId = e.target.value;
-                                            setSelectedEmployeeId(empId);
-                                            const emp = employees.find(e => e.id === empId);
-                                            if (emp) {
-                                                setEmployeeId(emp.nik);
-                                                setName(emp.name || emp.user?.name || emp.nik);
-                                            }
-                                        }}
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none text-white"
-                                    >
-                                        <option value="">-- Pilih Karyawan --</option>
-                                        {employees.map(emp => (
-                                            <option key={emp.id} value={emp.id}>
-                                                {emp.nik}
-                                            </option>
-                                        ))}
-                                    </select>
-                                ) : (
-                                    <input
-                                        type="text"
-                                        value={employeeId}
-                                        onChange={(e) => setEmployeeId(e.target.value)}
-                                        disabled={!!user || role === 'employee'} // Read-only if role is employee (set by select)
-                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 disabled:bg-slate-900 disabled:text-slate-600 text-white"
-                                        placeholder="EMP001"
-                                        required
-                                        autoComplete="off"
-                                    />
-                                )}
+                                <input
+                                    type="text"
+                                    value={employeeId}
+                                    readOnly
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 disabled:bg-slate-900 disabled:text-slate-600 text-slate-400 cursor-not-allowed"
+                                    placeholder="Auto-filled from Name"
+                                />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-400 mb-1">
@@ -259,16 +231,31 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
 
                         <div>
                             <label className="block text-sm font-medium text-slate-400 mb-1">
-                                Nama Lengkap
+                                Nama Karyawan
                             </label>
-                            <input
-                                type="text"
-                                value={name}
-                                onChange={(e) => setName(e.target.value)}
-                                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white placeholder-slate-600 transition"
-                                placeholder="John Doe"
-                                required
-                            />
+                            <select
+                                value={employees.find(e => e.nik === employeeId)?.id || ''}
+                                onChange={(e) => {
+                                    const empId = e.target.value;
+                                    const emp = employees.find(emp => emp.id === empId);
+                                    if (emp) {
+                                        setName(emp.name);
+                                        setEmployeeId(emp.nik);
+                                    } else {
+                                        // Handle case where selection is cleared (if we add a "clear" option)
+                                        // For now, assume mandatory selection if we want to enforce linking
+                                    }
+                                }}
+                                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white appearance-none"
+                                disabled={false} // Always selectable? Or disabled if editing? User said "Name... is select".
+                            >
+                                <option value="">-- Pilih Karyawan --</option>
+                                {employees.map(emp => (
+                                    <option key={emp.id} value={emp.id}>
+                                        {emp.name} ({emp.nik})
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         <div>

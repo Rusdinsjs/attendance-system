@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { adminAPI } from '../api/client';
 import type { Attendance } from '../api/client';
-import { Calendar, Download, Filter } from 'lucide-react';
+import { Calendar, Download, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function ReportsPage() {
     const [dateRange, setDateRange] = useState({
@@ -11,13 +11,25 @@ export default function ReportsPage() {
         end: new Date().toISOString().split('T')[0],
     });
 
-    const { data: attendances, isLoading } = useQuery({
-        queryKey: ['todayAttendance'],
+    const [page, setPage] = useState(1);
+    const limit = 10;
+
+    const { data: reportData, isLoading } = useQuery({
+        queryKey: ['attendanceReport', dateRange, page],
         queryFn: async () => {
-            const res = await adminAPI.getTodayAttendance();
-            return res.data.attendances || [];
+            const res = await adminAPI.getTodayAttendance({
+                start_date: dateRange.start,
+                end_date: dateRange.end,
+                limit,
+                offset: (page - 1) * limit
+            });
+            return res.data;
         },
     });
+
+    const attendances = reportData?.attendances || [];
+    const total = reportData?.total || 0;
+    const totalPages = Math.ceil(total / limit);
 
     const formatTime = (time: string | null) => {
         if (!time) return '-';
@@ -77,14 +89,20 @@ export default function ReportsPage() {
                     <input
                         type="date"
                         value={dateRange.start}
-                        onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                        onChange={(e) => {
+                            setDateRange({ ...dateRange, start: e.target.value });
+                            setPage(1);
+                        }}
                         className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white appearance-none"
                     />
                     <span className="text-slate-500">—</span>
                     <input
                         type="date"
                         value={dateRange.end}
-                        onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                        onChange={(e) => {
+                            setDateRange({ ...dateRange, end: e.target.value });
+                            setPage(1);
+                        }}
                         className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white appearance-none"
                     />
                     <button className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition border border-slate-700">
@@ -176,6 +194,29 @@ export default function ReportsPage() {
                     </div>
                 )}
             </div>
+
+            {/* Pagination */}
+            {!isLoading && total > limit && (
+                <div className="flex justify-end items-center gap-2 mt-4">
+                    <button
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
+                    >
+                        <ChevronLeft size={16} />
+                    </button>
+                    <span className="text-sm text-slate-400">
+                        Halaman {page} dari {totalPages}
+                    </span>
+                    <button
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                        disabled={page === totalPages}
+                        className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
+                    >
+                        <ChevronRight size={16} />
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

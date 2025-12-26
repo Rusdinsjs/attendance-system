@@ -1,7 +1,7 @@
 // Transfer Requests Page - Admin
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminAPI } from '../api/client';
-import { MapPin, Check, X, Clock, AlertCircle } from 'lucide-react';
+import { MapPin, Check, X, Clock, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 
 interface TransferRequest {
@@ -29,13 +29,23 @@ export default function TransferRequestsPage() {
     const [selectedRequest, setSelectedRequest] = useState<TransferRequest | null>(null);
     const [rejectNote, setRejectNote] = useState('');
 
-    const { data, isLoading } = useQuery({
-        queryKey: ['transferRequests'],
+    const [page, setPage] = useState(1);
+    const limit = 10;
+
+    const { data: requestData, isLoading } = useQuery({
+        queryKey: ['transferRequests', page],
         queryFn: async () => {
-            const res = await adminAPI.getTransferRequests();
-            return res.data.requests || [];
+            const res = await adminAPI.getTransferRequests({
+                limit,
+                offset: (page - 1) * limit
+            });
+            return res.data;
         },
     });
+
+    const data = requestData?.requests || [];
+    const total = requestData?.total || 0;
+    const totalPages = Math.ceil(total / limit);
 
     const approveMutation = useMutation({
         mutationFn: (id: string) => adminAPI.approveTransferRequest(id),
@@ -136,6 +146,29 @@ export default function TransferRequestsPage() {
                     </div>
                 )}
             </div>
+
+            {/* Pagination */}
+            {!isLoading && total > limit && (
+                <div className="flex justify-end items-center gap-2 mt-4">
+                    <button
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
+                    >
+                        <ChevronLeft size={16} />
+                    </button>
+                    <span className="text-sm text-slate-400">
+                        Halaman {page} dari {totalPages}
+                    </span>
+                    <button
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                        disabled={page === totalPages}
+                        className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
+                    >
+                        <ChevronRight size={16} />
+                    </button>
+                </div>
+            )}
 
             {/* Detail Modal */}
             {selectedRequest && (

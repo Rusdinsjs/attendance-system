@@ -42,7 +42,7 @@ export const authAPI = {
 // Admin API
 export const adminAPI = {
     // Users
-    getUsers: () => apiClient.get('/admin/users'),
+    getUsers: (params?: any) => apiClient.get('/admin/users', { params }),
     createUser: (data: CreateUserRequest) => apiClient.post('/admin/users', data),
     updateUser: (id: string, data: UpdateUserRequest) =>
         apiClient.put(`/admin/users/${id}`, data),
@@ -56,12 +56,12 @@ export const adminAPI = {
     },
 
     // Attendance
-    getTodayAttendance: () => apiClient.get('/admin/attendance/today'),
+    getTodayAttendance: (params?: any) => apiClient.get('/admin/attendance/today', { params }),
     getAttendanceReport: (params: ReportParams) =>
         apiClient.get('/admin/attendance/report', { params }),
 
     // Face Verification
-    getFaceVerifications: () => apiClient.get('/admin/face-verifications'),
+    getFaceVerifications: (params?: any) => apiClient.get('/admin/face-verifications', { params }),
     approveFaceVerification: (userId: string) =>
         apiClient.post(`/admin/face-verifications/${userId}/approve`),
     rejectFaceVerification: (userId: string, reason?: string) =>
@@ -80,20 +80,20 @@ export const adminAPI = {
     },
 
     // Transfer Requests
-    getTransferRequests: () => apiClient.get('/admin/transfer-requests'),
+    getTransferRequests: (params?: any) => apiClient.get('/admin/transfer-requests', { params }),
     approveTransferRequest: (id: string) =>
         apiClient.post(`/admin/transfer-requests/${id}/approve`),
     rejectTransferRequest: (id: string, note?: string) =>
         apiClient.post(`/admin/transfer-requests/${id}/reject`, { admin_note: note }),
 
     // Offices
-    getOffices: () => apiClient.get('/admin/offices'),
+    getOffices: (params?: any) => apiClient.get('/admin/offices', { params }),
     createOffice: (data: Partial<Office>) => apiClient.post('/admin/offices', data),
     updateOffice: (id: string, data: Partial<Office>) => apiClient.put(`/admin/offices/${id}`, data),
     deleteOffice: (id: string) => apiClient.delete(`/admin/offices/${id}`),
 
     // Kiosk Management
-    getKiosks: () => apiClient.get('/admin/kiosks'),
+    getKiosks: (params?: any) => apiClient.get('/admin/kiosks', { params }),
     createKiosk: (data: CreateKioskRequest) => apiClient.post('/admin/kiosks', data),
     updateKiosk: (id: string, data: Partial<UpdateKioskRequest>) => apiClient.put(`/admin/kiosks/${id}`, data),
     deleteKiosk: (id: string) => apiClient.delete(`/admin/kiosks/${id}`),

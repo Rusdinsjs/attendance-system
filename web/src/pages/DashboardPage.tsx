@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { adminAPI } from '../api/client';
 import type { Attendance } from '../api/client';
-import { Users, Clock, AlertTriangle, CheckCircle, TrendingUp } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CheckCircle, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 interface Stats {
@@ -15,14 +15,24 @@ interface Stats {
 export default function DashboardPage() {
     const [wsConnected, setWsConnected] = useState(false);
 
-    const { data: todayAttendance, isLoading, refetch } = useQuery({
-        queryKey: ['todayAttendance'],
+    const [page, setPage] = useState(1);
+    const limit = 10;
+
+    const { data: attendanceData, isLoading, refetch } = useQuery({
+        queryKey: ['todayAttendance', page],
         queryFn: async () => {
-            const res = await adminAPI.getTodayAttendance();
-            return res.data.attendances || [];
+            const res = await adminAPI.getTodayAttendance({
+                limit,
+                offset: (page - 1) * limit
+            });
+            return res.data;
         },
         refetchInterval: 30000, // Refresh every 30s
     });
+
+    const todayAttendance = attendanceData?.attendances || [];
+    const total = attendanceData?.total || 0;
+    const totalPages = Math.ceil(total / limit);
 
     // Calculate stats
     const stats: Stats = {
@@ -123,7 +133,7 @@ export default function DashboardPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800">
-                                {todayAttendance?.slice(0, 10).map((attendance: Attendance) => (
+                                {todayAttendance.map((attendance: Attendance) => (
                                     <tr key={attendance.id} className="hover:bg-slate-800/50 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className="font-medium text-white">{attendance.user?.name || attendance.user_name || 'Unknown'}</span>
@@ -154,6 +164,29 @@ export default function DashboardPage() {
                                 )}
                             </tbody>
                         </table>
+                    </div>
+                )}
+
+                {/* Pagination */}
+                {!isLoading && total > limit && (
+                    <div className="flex justify-end items-center gap-2 p-4 border-t border-slate-800">
+                        <button
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
+                        >
+                            <ChevronLeft size={16} />
+                        </button>
+                        <span className="text-sm text-slate-400">
+                            Halaman {page} dari {totalPages}
+                        </span>
+                        <button
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page === totalPages}
+                            className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
+                        >
+                            <ChevronRight size={16} />
+                        </button>
                     </div>
                 )}
             </div>

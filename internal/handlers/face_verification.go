@@ -10,6 +10,7 @@ import (
 	"github.com/attendance-system/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"strconv"
 )
 
 // FaceVerificationHandler handles face verification endpoints
@@ -120,10 +121,13 @@ func (h *FaceVerificationHandler) UploadFacePhotos(c *gin.Context) {
 	})
 }
 
-// GetPendingVerifications returns list of users pending face verification
+// GetPendingVerifications returns list of users pending face verification with pagination
 // GET /api/admin/face-verifications
 func (h *FaceVerificationHandler) GetPendingVerifications(c *gin.Context) {
-	users, err := h.userRepo.FindByFaceStatus(c.Request.Context(), "pending")
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+
+	users, total, err := h.userRepo.FindByFaceStatus(c.Request.Context(), "pending", limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get pending verifications"})
 		return
@@ -146,7 +150,7 @@ func (h *FaceVerificationHandler) GetPendingVerifications(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"verifications": result,
-		"count":         len(result),
+		"total":         total,
 	})
 }
 

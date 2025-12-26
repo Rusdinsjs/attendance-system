@@ -7,6 +7,7 @@ import (
 	"github.com/attendance-system/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"strconv"
 )
 
 type OfficeHandler struct {
@@ -17,15 +18,24 @@ func NewOfficeHandler(officeRepo *repository.OfficeRepository) *OfficeHandler {
 	return &OfficeHandler{officeRepo: officeRepo}
 }
 
-// GetAllOffices returns all offices (public/protected)
+// GetAllOffices returns all offices (public/protected) with optional pagination
 // GET /api/offices
 func (h *OfficeHandler) GetAllOffices(c *gin.Context) {
-	offices, err := h.officeRepo.FindAll(c.Request.Context())
+	limitStr := c.DefaultQuery("limit", "100") // Default higher for office dropdowns
+	offsetStr := c.DefaultQuery("offset", "0")
+	
+	limit, _ := strconv.Atoi(limitStr)
+	offset, _ := strconv.Atoi(offsetStr)
+
+	offices, total, err := h.officeRepo.FindAll(c.Request.Context(), limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch offices"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"offices": offices})
+	c.JSON(http.StatusOK, gin.H{
+		"offices": offices,
+		"total":   total,
+	})
 }
 
 // CreateOffice creates a new office (admin)

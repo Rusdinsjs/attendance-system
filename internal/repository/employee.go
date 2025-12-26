@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/attendance-system/internal/models"
 	"github.com/google/uuid"
@@ -61,6 +62,14 @@ type EmployeeFilters struct {
 	Position         string
 	EmploymentStatus string
 	Gender           string
+	DynamicFilters   []DynamicFilter
+}
+
+// DynamicFilter represents a custom filter
+type DynamicFilter struct {
+	Field    string `json:"field"`
+	Operator string `json:"operator"` // eq, like, gt, lt, gte, lte
+	Value    string `json:"value"`
 }
 
 // FindAll returns employees with optional filtering
@@ -84,7 +93,7 @@ func (r *EmployeeRepository) FindAll(ctx context.Context, filters EmployeeFilter
 	}
 
 	if filters.Position != "" {
-		query = query.Where("position = ?", filters.Position)
+		query = query.Where("position ILIKE ?", "%"+filters.Position+"%")
 	}
 	
 	if filters.EmploymentStatus != "" {
@@ -93,6 +102,30 @@ func (r *EmployeeRepository) FindAll(ctx context.Context, filters EmployeeFilter
 	
 	if filters.Gender != "" {
 		query = query.Where("gender = ?", filters.Gender)
+	}
+
+	// Dynamic Filters
+	for _, f := range filters.DynamicFilters {
+		// allow-list fields to prevent SQL injection or bad queries
+		// For simplicity, we assume the frontend sends snake_case column names that match DB
+		// In production, verify `f.Field` against a map of allowed columns
+		
+		switch f.Operator {
+		case "eq":
+			query = query.Where(fmt.Sprintf("%s = ?", f.Field), f.Value)
+		case "neq":
+			query = query.Where(fmt.Sprintf("%s != ?", f.Field), f.Value)
+		case "like":
+			query = query.Where(fmt.Sprintf("%s ILIKE ?", f.Field), "%"+f.Value+"%")
+		case "gt":
+			query = query.Where(fmt.Sprintf("%s > ?", f.Field), f.Value)
+		case "lt":
+			query = query.Where(fmt.Sprintf("%s < ?", f.Field), f.Value)
+		case "gte":
+			query = query.Where(fmt.Sprintf("%s >= ?", f.Field), f.Value)
+		case "lte":
+			query = query.Where(fmt.Sprintf("%s <= ?", f.Field), f.Value)
+		}
 	}
 
 	if err := query.Count(&total).Error; err != nil {

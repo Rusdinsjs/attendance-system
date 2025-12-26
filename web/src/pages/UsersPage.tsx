@@ -3,10 +3,12 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminAPI } from '../api/client';
 import type { User, CreateUserRequest, UpdateUserRequest } from '../api/client';
-import { Search, Plus, Edit, Trash2, UserCheck, UserX, QrCode, Download, X, Eye } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, UserCheck, UserX, QrCode, Download, X, Eye, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import UserFormModal from '../components/UserFormModal';
 import UserDetailModal from '../components/users/UserDetailModal';
+import EmployeeFilters from '../components/employees/EmployeeFilters';
+import AdvancedFilterBuilder, { type DynamicFilter } from '../components/employees/AdvancedFilterBuilder';
 
 export default function UsersPage() {
     const queryClient = useQueryClient();
@@ -16,14 +18,41 @@ export default function UsersPage() {
     const [detailUser, setDetailUser] = useState<User | null>(null);
     const [qrUser, setQrUser] = useState<User | null>(null);
     const qrRef = useRef<HTMLDivElement>(null);
+    const [page, setPage] = useState(1);
+    const [filters, setFilters] = useState({
+        office_id: '',
+        position: '',
+        employment_status: '',
+        gender: ''
+    });
+    const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
+    const [dynamicFilters, setDynamicFilters] = useState<DynamicFilter[]>([]);
 
-    const { data: users, isLoading } = useQuery({
-        queryKey: ['users'],
+    const { data: offices } = useQuery({
+        queryKey: ['offices'],
         queryFn: async () => {
-            const res = await adminAPI.getUsers();
+            const res = await adminAPI.getOffices();
+            return res.data.offices || [];
+        },
+    });
+
+    const { data, isLoading } = useQuery({
+        queryKey: ['users', page, search, filters, dynamicFilters],
+        queryFn: async () => {
+            const res = await adminAPI.getUsers({
+                limit: 10,
+                offset: (page - 1) * 10,
+                name: search,
+                filters: JSON.stringify(dynamicFilters),
+                ...filters
+            });
             return res.data;
         },
     });
+
+    const users = data?.data || [];
+    const total = data?.total || 0;
+    const totalPages = Math.ceil(total / 10);
 
     const createMutation = useMutation({
         mutationFn: adminAPI.createUser,
@@ -47,11 +76,8 @@ export default function UsersPage() {
         },
     });
 
-    const filteredUsers = users?.filter((user: User) =>
-        user.name.toLowerCase().includes(search.toLowerCase()) ||
-        user.email.toLowerCase().includes(search.toLowerCase()) ||
-        user.employee_id.toLowerCase().includes(search.toLowerCase())
-    );
+    // Filtered locally before, now handled by server
+    const filteredUsers = users;
 
     const getRoleBadge = (role: string) => {
         const styles: Record<string, string> = {
@@ -167,9 +193,46 @@ export default function UsersPage() {
                         placeholder="Cari nama, email, atau ID..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white placeholder-slate-600"
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white placeholder-slate-600"
                     />
                 </div>
+            </div>
+
+            {/* Advanced Filters */}
+            <div className="mb-6">
+                <EmployeeFilters
+                    offices={offices || []}
+                    filters={filters}
+                    onChange={(key, value) => {
+                        setFilters(prev => ({ ...prev, [key]: value }));
+                        setPage(1);
+                    }}
+                    onReset={() => {
+                        setFilters({ office_id: '', position: '', employment_status: '', gender: '' });
+                        setPage(1);
+                    }}
+                />
+
+                <div className="mb-4">
+                    <button
+                        onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
+                        className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-medium"
+                    >
+                        <Filter size={14} />
+                        {showAdvancedFilter ? 'Sembunyikan Filter Custom' : 'Tampilkan Filter Custom'}
+                    </button>
+                </div>
+
+                {showAdvancedFilter && (
+                    <AdvancedFilterBuilder
+                        filters={dynamicFilters}
+                        onChange={(f) => {
+                            setDynamicFilters(f);
+                            setPage(1);
+                        }}
+                        onClose={() => setShowAdvancedFilter(false)}
+                    />
+                )}
             </div>
 
             {/* Users Table */}
@@ -279,7 +342,7 @@ export default function UsersPage() {
                                 ))}
                                 {(!filteredUsers || filteredUsers.length === 0) && (
                                     <tr>
-                                        <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
+                                        <td colSpan={7} className="px-6 py-8 text-center text-slate-500">
                                             {search ? 'Tidak ada user yang cocok' : 'Belum ada data user'}
                                         </td>
                                     </tr>
@@ -289,6 +352,29 @@ export default function UsersPage() {
                     </div>
                 )}
             </div>
+
+            {/* Pagination */}
+            {total > 10 && (
+                <div className="flex justify-end items-center gap-2 mt-4">
+                    <button
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
+                    >
+                        <ChevronLeft size={16} />
+                    </button>
+                    <span className="text-sm text-slate-400">
+                        Page {page} of {totalPages}
+                    </span>
+                    <button
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                        disabled={page === totalPages}
+                        className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
+                    >
+                        <ChevronRight size={16} />
+                    </button>
+                </div>
+            )}
 
             <UserFormModal
                 isOpen={isModalOpen}

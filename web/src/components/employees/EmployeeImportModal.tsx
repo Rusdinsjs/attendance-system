@@ -41,13 +41,29 @@ export default function EmployeeImportModal({ isOpen, onClose, onSuccess }: Empl
     };
 
     const generateTemplate = () => {
-        const headers = ['NIK,Nama Lengkap,Email,Posisi,ID Kantor,Tanggal Bergabung (YYYY-MM-DD)'];
-        const example = '2024001,John Doe,john@example.com,Staff IT,OFFICE-UUID,2024-01-01';
-        const csvContent = "data:text/csv;charset=utf-8," + headers.join("\n") + "\n" + example;
+        const headers = [
+            'NIK', 'Nama Lengkap', 'Email', 'Posisi', 'ID Kantor', 'Tanggal Bergabung (YYYY-MM-DD)',
+            'Status Karyawan', 'No KTP', 'Gender (L/P)', 'Tempat Lahir', 'Tanggal Lahir (YYYY-MM-DD)',
+            'Status Pernikahan', 'Jumlah Anak', 'Alamat', 'Status Tempat Tinggal', 'Agama', 'Golongan Darah',
+            'Nama Kontak Darurat', 'No HP Kontak Darurat', 'Hubungan Kontak Darurat',
+            'No Rekening', 'Nama Bank', 'BPJS Kesehatan', 'BPJS Ketenagakerjaan', 'NPWP',
+            'Gaji Pokok', 'Pendidikan Terakhir', 'Grade', 'Kompetensi', 'Radius (m)'
+        ];
+
+        const example = [
+            '2024001', 'John Doe', 'john@example.com', 'Staff IT', 'OFFICE-UUID', '2024-01-01',
+            'PKWT', '3201123456780001', 'L', 'Jakarta', '1990-01-01',
+            'KAWIN', '2', 'Jl. Sudirman No. 1', 'RUMAH SENDIRI', 'ISLAM', 'O',
+            'Jane Doe', '08123456789', 'ISTRI',
+            '1234567890', 'BCA', '000123456', '000654321', '12.345.678.9-000.000',
+            '5000000', 'S1', '10', 'Programming, Networking', '100'
+        ];
+
+        const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + example.join(",");
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
-        link.setAttribute("download", "template_import_karyawan.csv");
+        link.setAttribute("download", "template_lengkap_karyawan.csv");
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -73,8 +89,11 @@ export default function EmployeeImportModal({ isOpen, onClose, onSuccess }: Empl
                         <div>
                             <h3 className="text-sm font-medium text-blue-400 mb-1">Format File CSV</h3>
                             <p className="text-xs text-slate-400 mb-3">
-                                Gunakan template ini untuk memastikan format data benar.
-                                Kolom wajib: NIK, Nama, Email, Posisi, ID Kantor, Tanggal Bergabung.
+                                Gunakan template ini sebagai referensi. Anda dapat menghapus kolom yang tidak diperlukan.
+                                <br />
+                                <strong>Wajib:</strong> NIK, Nama Lengkap.
+                                <br />
+                                Kolom lain bersifat opsional. Header harus sesuai dengan template.
                             </p>
                             <button
                                 onClick={generateTemplate}

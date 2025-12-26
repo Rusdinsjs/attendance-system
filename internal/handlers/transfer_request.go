@@ -7,6 +7,7 @@ import (
 	"github.com/attendance-system/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"strconv"
 )
 
 // TransferRequestHandler handles office transfer request endpoints
@@ -106,10 +107,13 @@ func (h *TransferRequestHandler) GetMyRequests(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"requests": requests})
 }
 
-// GetPendingRequests returns all pending transfer requests (admin)
+// GetPendingRequests returns pending transfer requests with pagination (admin)
 // GET /api/admin/transfer-requests
 func (h *TransferRequestHandler) GetPendingRequests(c *gin.Context) {
-	requests, err := h.transferRepo.FindByStatus(c.Request.Context(), "pending")
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+
+	requests, total, err := h.transferRepo.FindByStatus(c.Request.Context(), "pending", limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get requests"})
 		return
@@ -117,7 +121,7 @@ func (h *TransferRequestHandler) GetPendingRequests(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"requests": requests,
-		"count":    len(requests),
+		"total":    total,
 	})
 }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { adminAPI, type Kiosk } from '../../api/client';
-import { Plus, Edit, Trash2, Monitor, MapPin, Activity, XCircle, Laptop, Smartphone, Unlink } from 'lucide-react';
+import { Plus, Edit, Trash2, Monitor, MapPin, Activity, XCircle, Laptop, Smartphone, Unlink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
 
@@ -21,17 +21,29 @@ export default function KioskManagementPage() {
     const [kioskId, setKioskId] = useState('');
     const [officeId, setOfficeId] = useState('');
     const [isActive, setIsActive] = useState(true);
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const limit = 9; // Grid based usually fits better with 3x3
 
     useEffect(() => {
         fetchData();
+    }, [page]);
+
+    useEffect(() => {
         fetchOffices();
     }, []);
 
     const fetchData = async () => {
         try {
-            const response = await adminAPI.getKiosks();
-            const data = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+            setLoading(true);
+            const response = await adminAPI.getKiosks({
+                limit,
+                offset: (page - 1) * limit
+            });
+            const data = response.data?.data || (Array.isArray(response.data) ? response.data : []);
+            const totalCount = response.data?.total || data.length;
             setKiosks(data);
+            setTotal(totalCount);
         } catch (error) {
             console.error('Failed to fetch kiosks:', error);
             setKiosks([]);
@@ -240,6 +252,42 @@ export default function KioskManagementPage() {
                     <span className="text-slate-500 font-medium group-hover:text-cyan-400">Register New Kiosk</span>
                 </button>
             </div>
+
+            {/* Pagination Controls */}
+            {!loading && total > limit && (
+                <div className="flex justify-center items-center gap-4 py-8">
+                    <button
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:border-cyan-500/50 transition-all shadow-lg"
+                    >
+                        <ChevronLeft size={20} />
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                        {Array.from({ length: Math.ceil(total / limit) }, (_, i) => i + 1).map((p) => (
+                            <button
+                                key={p}
+                                onClick={() => setPage(p)}
+                                className={`w-10 h-10 rounded-xl font-bold transition-all border ${page === p
+                                        ? "bg-cyan-500 border-cyan-400 text-white shadow-lg shadow-cyan-500/20"
+                                        : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-600"
+                                    }`}
+                            >
+                                {p}
+                            </button>
+                        ))}
+                    </div>
+
+                    <button
+                        onClick={() => setPage(p => Math.min(Math.ceil(total / limit), p + 1))}
+                        disabled={page === Math.ceil(total / limit)}
+                        className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:border-cyan-500/50 transition-all shadow-lg"
+                    >
+                        <ChevronRight size={20} />
+                    </button>
+                </div>
+            )}
 
             {/* Create/Edit Modal - Dark Theme */}
             {

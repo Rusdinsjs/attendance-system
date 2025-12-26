@@ -12,6 +12,7 @@ import (
 	"github.com/attendance-system/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"strconv"
 )
 
 // KioskHandler handles kiosk-related endpoints
@@ -473,15 +474,21 @@ func (h *KioskHandler) PairKiosk(c *gin.Context) {
 
 // Admin Kiosk Management Handlers
 
-// GetAllKiosks returns all registered kiosks
+// GetAllKiosks returns all registered kiosks with pagination
 // GET /api/admin/kiosks
 func (h *KioskHandler) GetAllKiosks(c *gin.Context) {
-	kiosks, err := h.kioskRepo.GetAll(c.Request.Context())
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+
+	kiosks, total, err := h.kioskRepo.GetAll(c.Request.Context(), limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch kiosks"})
 		return
 	}
-	c.JSON(http.StatusOK, kiosks)
+	c.JSON(http.StatusOK, gin.H{
+		"data":  kiosks,
+		"total": total,
+	})
 }
 
 // CreateKioskRequest represents payload for creating a kiosk

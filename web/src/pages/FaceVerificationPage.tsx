@@ -1,7 +1,7 @@
 // Face Verification Page - Admin
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminAPI } from '../api/client';
-import { Check, X, User, Clock, AlertCircle, ImageIcon } from 'lucide-react';
+import { Check, X, User, Clock, AlertCircle, ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 
 interface FacePhoto {
@@ -25,13 +25,23 @@ export default function FaceVerificationPage() {
     const [selectedUser, setSelectedUser] = useState<VerificationUser | null>(null);
     const [rejectReason, setRejectReason] = useState('');
 
-    const { data, isLoading } = useQuery({
-        queryKey: ['faceVerifications'],
+    const [page, setPage] = useState(1);
+    const limit = 10;
+
+    const { data: verificationData, isLoading } = useQuery({
+        queryKey: ['faceVerifications', page],
         queryFn: async () => {
-            const res = await adminAPI.getFaceVerifications();
-            return res.data.verifications || [];
+            const res = await adminAPI.getFaceVerifications({
+                limit,
+                offset: (page - 1) * limit
+            });
+            return res.data;
         },
     });
+
+    const data = verificationData?.verifications || [];
+    const total = verificationData?.total || 0;
+    const totalPages = Math.ceil(total / limit);
 
     const approveMutation = useMutation({
         mutationFn: (userId: string) => adminAPI.approveFaceVerification(userId),
@@ -132,6 +142,29 @@ export default function FaceVerificationPage() {
                     </div>
                 )}
             </div>
+
+            {/* Pagination */}
+            {!isLoading && total > limit && (
+                <div className="flex justify-end items-center gap-2 mt-4">
+                    <button
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
+                    >
+                        <ChevronLeft size={16} />
+                    </button>
+                    <span className="text-sm text-slate-400">
+                        Halaman {page} dari {totalPages}
+                    </span>
+                    <button
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                        disabled={page === totalPages}
+                        className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
+                    >
+                        <ChevronRight size={16} />
+                    </button>
+                </div>
+            )}
 
             {/* Photo Preview Modal */}
             {selectedUser && (

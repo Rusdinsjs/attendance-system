@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { employeeAPI, adminAPI } from '../api/client';
 import type { Employee } from '../types/employee';
-import { Plus, Search, Edit, Trash2, MapPin, Briefcase, User, ChevronLeft, ChevronRight, Eye, Upload } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, MapPin, Briefcase, User, ChevronLeft, ChevronRight, Eye, Upload, Filter } from 'lucide-react';
 import EmployeeForm from '../components/employees/EmployeeForm';
 import EmployeeImportModal from '../components/employees/EmployeeImportModal';
 import EmployeeFilters from '../components/employees/EmployeeFilters';
+import AdvancedFilterBuilder, { type DynamicFilter } from '../components/employees/AdvancedFilterBuilder';
 
 export default function EmployeePage() {
     const [employees, setEmployees] = useState<Employee[]>([]);
@@ -24,6 +25,10 @@ export default function EmployeePage() {
     const [offices, setOffices] = useState<any[]>([]);
     const [showImportModal, setShowImportModal] = useState(false);
 
+    // Custom Filters
+    const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
+    const [dynamicFilters, setDynamicFilters] = useState<DynamicFilter[]>([]);
+
     useEffect(() => {
         fetchOffices();
     }, []);
@@ -31,7 +36,7 @@ export default function EmployeePage() {
     useEffect(() => {
         fetchEmployees();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, search, filters]);
+    }, [page, search, filters, dynamicFilters]);
 
     const fetchOffices = async () => {
         try {
@@ -49,6 +54,7 @@ export default function EmployeePage() {
                 limit: 10,
                 offset: (page - 1) * 10,
                 name: search,
+                filters: JSON.stringify(dynamicFilters),
                 ...filters
             });
             setEmployees(res.data.data);
@@ -124,6 +130,24 @@ export default function EmployeePage() {
                     onChange={(key, value) => setFilters(prev => ({ ...prev, [key]: value }))}
                     onReset={() => setFilters({ office_id: '', position: '', employment_status: '', gender: '' })}
                 />
+
+                <div className="mb-4">
+                    <button
+                        onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
+                        className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-medium"
+                    >
+                        <Filter size={14} />
+                        {showAdvancedFilter ? 'Sembunyikan Filter Custom' : 'Tampilkan Filter Custom'}
+                    </button>
+                </div>
+
+                {showAdvancedFilter && (
+                    <AdvancedFilterBuilder
+                        filters={dynamicFilters}
+                        onChange={setDynamicFilters}
+                        onClose={() => setShowAdvancedFilter(false)}
+                    />
+                )}
             </div>
 
             {/* List */}
