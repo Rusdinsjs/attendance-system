@@ -297,12 +297,136 @@ func (h *AttendanceHandler) GetAllToday(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"attendances": attendances,
-		"total":       total,
-		"summary": gin.H{
-			"total_late":    totalLate,
-			"total_on_time": totalOnTime,
-			"total_present": totalLate + totalOnTime,
-		},
+		"status":     status,
+		"attendance": attendance,
 	})
 }
+
+// GetDashboardStats returns aggregated stats for dashboard
+// GET /api/admin/dashboard/stats
+func (h *AttendanceHandler) GetDashboardStats(c *gin.Context) {
+	period := c.DefaultQuery("period", "today")
+
+	var startTime, endTime time.Time
+	now := time.Now()
+
+	// Prepare result container
+	var graphData interface{}
+	var total, present, late int64
+
+	// Get total active employees
+	users, err := h.userRepo.GetAll(c.Request.Context())
+	var totalEmployees int64
+	if err == nil {
+		totalEmployees = int64(len(users))
+	} else {
+		// Log error (optional)
+	}
+
+	if period == "month" {
+		// 1 month back from today (Rolling window)
+		// User requested range e.g. 27/11 - 26/12 when today is 27/12.
+		// StartDate: Today - 1 month
+		// EndDate: Today - 1 day (Yesterday)
+		oneMonthAgo := now.AddDate(0, -1, 0)
+		startTime = time.Date(oneMonthAgo.Year(), oneMonthAgo.Month(), oneMonthAgo.Day(), 0, 0, 0, 0, now.Location())
+		
+		yesterday := now.AddDate(0, 0, -1)
+		endTime = time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 23, 59, 59, 999999999, now.Location())
+
+		dailyStats, err := h.attendanceRepo.GetDailyStats(c.Request.Context(), startTime, endTime)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch daily stats"})
+			return
+		}
+		
+		// Aggregation
+		for _, stat := range dailyStats {
+			total += stat.Total
+			present += stat.Present
+			late += stat.Late
+		}
+		graphData = dailyStats
+
+	} else if period == "custom" {
+		startDateStr := c.Query("start_date")
+		endDateStr := c.Query("end_date")
+		
+		// Parse dates
+		s, err1 := time.Parse("2006-01-02", startDateStr)
+		e, err2 := time.Parse("2006-01-02", endDateStr)
+		
+		if err1 != nil || err2 != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid date format. Use YYYY-MM-DD"})
+			return
+		}
+
+		startTime = time.Date(s.Year(), s.Month(), s.Day(), 0, 0, 0, 0, now.Location())
+		endTime = time.Date(e.Year(), e.Month(), e.Day(), 23, 59, 59, 999999999, now.Location())
+
+		dailyStats, err := h.attendanceRepo.GetDailyStats(c.Request.Context(), startTime, endTime)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch daily stats"})
+			return
+		}
+		
+		// Aggregation
+		for _, stat := range dailyStats {
+			total += stat.Total
+			present += stat.Present
+			late += stat.Late
+		}
+		graphData = dailyStats
+
+	} else {
+		// Today
+		startTime = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		endTime = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, now.Location())
+
+		hourlyStats, err := h.attendanceRepo.GetHourlyStats(c.Request.Context(), startTime, endTime)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch hourly stats"})
+			return
+		}
+
+		// Aggregation
+		for _, stat := range hourlyStats {
+			total += stat.Total
+			present += stat.Present
+			late += stat.Late
+		}
+		graphData = hourlyStats
+	}
+
+
+
+	// 3. Get Total Employees
+	users, _ := h.userRepo.GetAll(c.Request.Context())
+	totalEmployees := int64(len(users))
+
+	// Calculate Absent
+	var absent int64
+	if period == "today" {
+		absent = totalEmployees - total
+	} else {
+		days := int64(endTime.Sub(startTime).Hours() / 24)
+		if days < 1 { days = 1 }
+		
+		potentialCheckins := totalEmployees * days
+		absent = potentialCheckins - total
+	}
+	
+	if absent < 0 { absent = 0 }
+
+	c.JSON(http.StatusOK, gin.H{
+		"stats": gin.H{
+			"total_employees": totalEmployees,
+			"present":         present,
+			"late":            late,
+			"absent":          absent,
+			"total_checkins":  total,
+		},
+		"graph_data": graphData,
+	})
+}
+

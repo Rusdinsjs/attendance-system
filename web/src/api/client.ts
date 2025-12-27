@@ -39,6 +39,11 @@ export const authAPI = {
     logout: () => apiClient.post('/auth/logout'),
 };
 
+// Public API
+export const publicAPI = {
+    getCompanySettings: () => apiClient.get('/kiosk/company-settings'),
+};
+
 // Admin API
 export const adminAPI = {
     // Users
@@ -56,6 +61,7 @@ export const adminAPI = {
     },
 
     // Attendance
+    getDashboardStats: (params: any) => apiClient.get('/admin/dashboard/stats', { params }),
     getTodayAttendance: (params?: any) => apiClient.get('/admin/attendance/today', { params }),
     getAttendanceReport: (params: ReportParams) =>
         apiClient.get('/admin/attendance/report', { params }),

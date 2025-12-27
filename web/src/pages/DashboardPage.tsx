@@ -1,46 +1,67 @@
+
 // Dashboard Page with Stats
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
 import { adminAPI } from '../api/client';
 import type { Attendance } from '../api/client';
-import { Users, Clock, AlertTriangle, CheckCircle, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useState } from 'react';
-
-interface Stats {
-    total: number;
-    present: number;
-    late: number;
-    absent: number;
-}
+import {
+    Users, Clock, AlertTriangle, CheckCircle, Calendar,
+    BarChart2, TrendingUp, Activity
+} from 'lucide-react';
+import {
+    BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis,
+    CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts';
 
 export default function DashboardPage() {
     const [wsConnected, setWsConnected] = useState(false);
 
-    const [page, setPage] = useState(1);
-    const limit = 10;
+    // State for Period & Chart
+    const [period, setPeriod] = useState<'today' | 'custom'>('today');
+    const [customStart, setCustomStart] = useState(new Date().toISOString().split('T')[0]);
+    const [customEnd, setCustomEnd] = useState(new Date().toISOString().split('T')[0]);
+    const [chartType, setChartType] = useState<'bar' | 'line' | 'area'>('bar');
 
-    const { data: attendanceData, isLoading, refetch } = useQuery({
-        queryKey: ['todayAttendance', page],
+    // 1. Dashboard Stats (Cards & Graph) -- Depends on Period
+    const { data: statsData, refetch } = useQuery({
+        queryKey: ['dashboardStats', period, customStart, customEnd],
+        queryFn: async () => {
+            const res = await adminAPI.getDashboardStats({
+                period,
+                start_date: period === 'custom' ? customStart : undefined,
+                end_date: period === 'custom' ? customEnd : undefined
+            });
+            return res.data as any;
+        },
+        refetchInterval: 60000, // 1 min
+        placeholderData: keepPreviousData
+    });
+
+    // 2. Live Activity (Always Today)
+    const { data: attendanceData, isLoading: isLoadingTable, refetch: refetchTable } = useQuery({
+        queryKey: ['todayAttendance'],
         queryFn: async () => {
             const res = await adminAPI.getTodayAttendance({
-                limit,
-                offset: (page - 1) * limit
+                limit: 10, // Fixed limit for recent activity
+                offset: 0
             });
-            return res.data;
+            return res.data as any;
         },
-        refetchInterval: 30000, // Refresh every 30s
+        refetchInterval: 30000, // 30s
+        placeholderData: keepPreviousData
     });
 
     const todayAttendance = attendanceData?.attendances || [];
-    const total = attendanceData?.total || 0;
-    const totalPages = Math.ceil(total / limit);
 
-    // Calculate stats
-    const stats: Stats = {
-        total: todayAttendance?.length || 0,
-        present: todayAttendance?.filter((a: Attendance) => a.check_in_time)?.length || 0,
-        late: todayAttendance?.filter((a: Attendance) => a.is_late)?.length || 0,
-        absent: (todayAttendance?.length || 0) - (todayAttendance?.filter((a: Attendance) => a.check_in_time)?.length || 0),
+    // Stats from API
+    const stats = statsData?.stats || {
+        total_employees: 0,
+        present: 0,
+        late: 0,
+        absent: 0,
+        total_checkins: 0,
     };
+    const graphData = statsData?.graph_data || [];
 
     // WebSocket connection
     useEffect(() => {
@@ -58,14 +79,15 @@ export default function DashboardPage() {
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             if (data.type === 'attendance_update') {
-                refetch();
+                refetchTable();
+                refetch(); // Update stats too
             }
         };
 
         ws.onclose = () => setWsConnected(false);
 
         return () => ws.close();
-    }, [refetch]);
+    }, [refetchTable, refetch]);
 
     const StatCard = ({ icon: Icon, label, value, color, bgColor }: any) => (
         <div className="bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-800 text-white">
@@ -86,40 +108,174 @@ export default function DashboardPage() {
         return new Date(time).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
     };
 
+    const renderChart = () => {
+        const CommonAxis = (
+            <>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
+                <XAxis
+                    dataKey={period === 'today' ? 'hour' : 'date'}
+                    tick={{ fill: '#94a3b8', fontSize: 12 }}
+                    tickFormatter={(val) => period === 'today' ? val : val.replace(/^\d{4}-/, '')}
+                    stroke="#475569"
+                />
+                <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} stroke="#475569" />
+                <Tooltip
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px', color: '#fff' }}
+                    itemStyle={{ color: '#fff' }}
+                    cursor={{ fill: '#1e293b', opacity: 0.5 }}
+                    labelFormatter={(label) => period === 'today' ? `Pukul ${label}` : label}
+                />
+            </>
+        );
+
+        if (chartType === 'line') {
+            return (
+                <LineChart data={graphData}>
+                    {CommonAxis}
+                    <Line type="monotone" dataKey="present" name="Hadir" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="late" name="Terlambat" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                </LineChart>
+            );
+        }
+        if (chartType === 'area') {
+            return (
+                <AreaChart data={graphData}>
+                    {CommonAxis}
+                    <Area type="monotone" dataKey="present" name="Hadir" stroke="#10b981" fill="#10b981" fillOpacity={0.3} />
+                    <Area type="monotone" dataKey="late" name="Terlambat" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.3} />
+                </AreaChart>
+            );
+        }
+        // Default Bar
+        return (
+            <BarChart data={graphData}>
+                {CommonAxis}
+                <Bar dataKey="present" name="Hadir" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="late" name="Terlambat" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+            </BarChart>
+        );
+    };
+
     return (
-        <div className="p-6">
+        <div className="p-6 space-y-8">
             {/* Header */}
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
                 <div>
                     <h1 className="text-2xl font-bold text-white">Dashboard</h1>
                     <p className="text-slate-400 mt-1">
-                        {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                        Monitoring absensi & statistik
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-                    <span className="text-sm text-slate-400">{wsConnected ? 'Live' : 'Offline'}</span>
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+
+                    {/* Date Range Inputs */}
+                    {period === 'custom' && (
+                        <div className="flex items-center gap-2 bg-slate-900 p-1.5 rounded-lg border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <input
+                                type="date"
+                                value={customStart}
+                                onChange={(e) => setCustomStart(e.target.value)}
+                                className="bg-slate-800 text-white text-sm px-3 py-1.5 rounded border border-slate-700 focus:outline-none focus:border-cyan-500"
+                            />
+                            <span className="text-slate-500">-</span>
+                            <input
+                                type="date"
+                                value={customEnd}
+                                onChange={(e) => setCustomEnd(e.target.value)}
+                                className="bg-slate-800 text-white text-sm px-3 py-1.5 rounded border border-slate-700 focus:outline-none focus:border-cyan-500"
+                            />
+                        </div>
+                    )}
+
+                    {/* Period Selector */}
+                    <div className="bg-slate-900 p-1 rounded-lg border border-slate-800 flex">
+                        <button
+                            onClick={() => setPeriod('today')}
+                            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${period === 'today'
+                                ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/20'
+                                : 'text-slate-400 hover:text-white'
+                                }`}
+                        >
+                            Hari Ini
+                        </button>
+                        <button
+                            onClick={() => setPeriod('custom')}
+                            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${period === 'custom'
+                                ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/20'
+                                : 'text-slate-400 hover:text-white'
+                                }`}
+                        >
+                            Periode
+                        </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg">
+                        <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <span className="text-xs font-medium text-slate-400">{wsConnected ? 'LIVE' : 'OFFLINE'}</span>
+                    </div>
                 </div>
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <StatCard icon={Users} label="Total Karyawan" value={stats.total} color="text-slate-200" bgColor="bg-slate-800" />
-                <StatCard icon={CheckCircle} label="Hadir" value={stats.present} color="text-emerald-400" bgColor="bg-emerald-500/10" />
-                <StatCard icon={AlertTriangle} label="Terlambat" value={stats.late} color="text-amber-400" bgColor="bg-amber-500/10" />
-                <StatCard icon={Clock} label="Belum Absen" value={stats.absent} color="text-red-400" bgColor="bg-red-500/10" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard icon={Users} label="Total Karyawan" value={stats.total_employees} color="text-slate-200" bgColor="bg-slate-800" />
+                <StatCard icon={CheckCircle} label={period === 'custom' ? "Total Hadir (Range)" : "Hadir"} value={stats.present} color="text-emerald-400" bgColor="bg-emerald-500/10" />
+                <StatCard icon={AlertTriangle} label={period === 'custom' ? "Total Terlambat" : "Terlambat"} value={stats.late} color="text-amber-400" bgColor="bg-amber-500/10" />
+                <StatCard icon={Clock} label={period === 'custom' ? "Absen (Estimasi)" : "Belum Absen"} value={stats.absent} color="text-red-400" bgColor="bg-red-500/10" />
             </div>
 
-            {/* Recent Activity */}
+            {/* Main Chart */}
+            <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 p-6">
+                <div className="flex flex-wrap items-center justify-between mb-6 gap-4">
+                    <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                        <Calendar size={20} className="text-cyan-400" />
+                        Statistik Kehadiran {period === 'today' ? 'Hari Ini (Per Jam)' : 'Periode Pilihan'}
+                    </h2>
+
+                    {/* Chart Type Selector */}
+                    <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
+                        <button
+                            onClick={() => setChartType('bar')}
+                            title="Bar Chart"
+                            className={`p-1.5 rounded ${chartType === 'bar' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                        >
+                            <BarChart2 size={18} />
+                        </button>
+                        <button
+                            onClick={() => setChartType('line')}
+                            title="Line Chart"
+                            className={`p-1.5 rounded ${chartType === 'line' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                        >
+                            <TrendingUp size={18} />
+                        </button>
+                        <button
+                            onClick={() => setChartType('area')}
+                            title="Area Chart"
+                            className={`p-1.5 rounded ${chartType === 'area' ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                        >
+                            <Activity size={18} />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                        {renderChart()}
+                    </ResponsiveContainer>
+                </div>
+            </div>
+
+            {/* Recent Activity Table */}
             <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden text-slate-200">
                 <div className="p-6 border-b border-slate-800">
                     <h2 className="text-lg font-semibold text-white flex items-center gap-2">
                         <TrendingUp size={20} className="text-cyan-400" />
-                        Aktivitas Hari Ini
+                        Aktivitas Terbaru
                     </h2>
                 </div>
 
-                {isLoading ? (
+                {isLoadingTable ? (
                     <div className="p-8 text-center text-slate-400">Loading...</div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -167,28 +323,7 @@ export default function DashboardPage() {
                     </div>
                 )}
 
-                {/* Pagination */}
-                {!isLoading && total > limit && (
-                    <div className="flex justify-end items-center gap-2 p-4 border-t border-slate-800">
-                        <button
-                            onClick={() => setPage(p => Math.max(1, p - 1))}
-                            disabled={page === 1}
-                            className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
-                        >
-                            <ChevronLeft size={16} />
-                        </button>
-                        <span className="text-sm text-slate-400">
-                            Halaman {page} dari {totalPages}
-                        </span>
-                        <button
-                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                            disabled={page === totalPages}
-                            className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
-                        >
-                            <ChevronRight size={16} />
-                        </button>
-                    </div>
-                )}
+
             </div>
         </div>
     );

@@ -211,6 +211,9 @@ func main() {
 			admin := protected.Group("/admin")
 			admin.Use(middleware.HRMiddleware())
 			{
+				// Dashboard stats
+				admin.GET("/dashboard/stats", attendanceHandler.GetDashboardStats)
+
 				admin.GET("/users", userHandler.GetAllUsers)
 				admin.POST("/users", userHandler.CreateUser)
 				admin.PUT("/users/:id", userHandler.UpdateUser)

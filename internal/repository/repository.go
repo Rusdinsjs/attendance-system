@@ -417,6 +417,57 @@ func (r *AttendanceRepository) GetReportStats(ctx context.Context, filters Atten
 	return totalLate, totalOnTime, nil
 }
 
+// DailyStat represents daily attendance statistics
+type DailyStat struct {
+	Date    string `json:"date"`
+	Total   int64  `json:"total"`
+	Present int64  `json:"present"`
+	Late    int64  `json:"late"`
+}
+
+// HourlyStat represents hourly attendance statistics
+type HourlyStat struct {
+	Hour    string `json:"hour"`
+	Total   int64  `json:"total"`
+	Present int64  `json:"present"`
+	Late    int64  `json:"late"`
+}
+
+// GetDailyStats returns daily attendance statistics for a given period
+func (r *AttendanceRepository) GetDailyStats(ctx context.Context, startTime, endTime time.Time) ([]DailyStat, error) {
+	var stats []DailyStat
+
+	err := r.db.WithContext(ctx).Model(&models.Attendance{}).
+		Joins("JOIN users ON users.id = attendances.user_id").
+		Select("TO_CHAR(check_in_time, 'YYYY-MM-DD') as date, COUNT(*) as total, " +
+			"SUM(CASE WHEN is_late = false THEN 1 ELSE 0 END) as present, " +
+			"SUM(CASE WHEN is_late = true THEN 1 ELSE 0 END) as late").
+		Where("check_in_time BETWEEN ? AND ?", startTime, endTime).
+		Group("TO_CHAR(check_in_time, 'YYYY-MM-DD')").
+		Order("date ASC").
+		Scan(&stats).Error
+
+	return stats, err
+}
+
+// GetHourlyStats returns hourly attendance statistics for a given period
+func (r *AttendanceRepository) GetHourlyStats(ctx context.Context, startTime, endTime time.Time) ([]HourlyStat, error) {
+	var stats []HourlyStat
+
+	// Group by H (Hour 0-23)
+	// TO_CHAR(check_in_time, 'HH24:00') returns like "09:00", "14:00"
+	err := r.db.WithContext(ctx).Model(&models.Attendance{}).
+		Select("TO_CHAR(check_in_time, 'HH24:00') as hour, COUNT(*) as total, " +
+			"SUM(CASE WHEN is_late = false THEN 1 ELSE 0 END) as present, " +
+			"SUM(CASE WHEN is_late = true THEN 1 ELSE 0 END) as late").
+		Where("check_in_time BETWEEN ? AND ?", startTime, endTime).
+		Group("TO_CHAR(check_in_time, 'HH24:00')").
+		Order("hour ASC").
+		Scan(&stats).Error
+
+	return stats, err
+}
+
 // RefreshTokenRepository handles database operations for refresh tokens
 type RefreshTokenRepository struct {
 	db *gorm.DB
