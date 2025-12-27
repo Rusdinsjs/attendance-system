@@ -28,7 +28,7 @@ func main() {
 	ctx := context.Background()
 
 	// Check if any office exists
-	offices, err := officeRepo.FindAll(ctx)
+	offices, _, err := officeRepo.FindAll(ctx, 100, 0)
 	if err != nil {
 		log.Fatalf("Failed to check offices: %v", err)
 	}

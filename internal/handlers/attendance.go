@@ -82,9 +82,9 @@ func (h *AttendanceHandler) CheckIn(c *gin.Context) {
 	if !utils.IsWithinRadius(user.OfficeLat, user.OfficeLong, req.Latitude, req.Longitude, user.AllowedRadius) {
 		distance := utils.GetDistance(user.OfficeLat, user.OfficeLong, req.Latitude, req.Longitude)
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":         "You are outside the allowed check-in radius",
-			"code":          "OUTSIDE_GEOFENCE",
-			"distance":      distance,
+			"error":          "You are outside the allowed check-in radius",
+			"code":           "OUTSIDE_GEOFENCE",
+			"distance":       distance,
 			"allowed_radius": user.AllowedRadius,
 		})
 		return
@@ -270,7 +270,7 @@ func (h *AttendanceHandler) GetTodayStatus(c *gin.Context) {
 func (h *AttendanceHandler) GetAllToday(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	
+
 	filters := repository.AttendanceFilters{
 		StartDate: c.Query("start_date"),
 		EndDate:   c.Query("end_date"),
@@ -290,15 +290,17 @@ func (h *AttendanceHandler) GetAllToday(c *gin.Context) {
 	// Get aggregation stats
 	totalLate, totalOnTime, err := h.attendanceRepo.GetReportStats(c.Request.Context(), filters)
 	if err != nil {
-		// Log error but don't fail the request? Or fail? 
+		// Log error but don't fail the request? Or fail?
 		// Failing is probably safer to avoid misleading data.
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get attendance stats"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":     status,
-		"attendance": attendance,
+		"attendances":   attendances,
+		"total":         total,
+		"total_late":    totalLate,
+		"total_on_time": totalOnTime,
 	})
 }
 
@@ -330,7 +332,7 @@ func (h *AttendanceHandler) GetDashboardStats(c *gin.Context) {
 		// EndDate: Today - 1 day (Yesterday)
 		oneMonthAgo := now.AddDate(0, -1, 0)
 		startTime = time.Date(oneMonthAgo.Year(), oneMonthAgo.Month(), oneMonthAgo.Day(), 0, 0, 0, 0, now.Location())
-		
+
 		yesterday := now.AddDate(0, 0, -1)
 		endTime = time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 23, 59, 59, 999999999, now.Location())
 
@@ -339,7 +341,7 @@ func (h *AttendanceHandler) GetDashboardStats(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch daily stats"})
 			return
 		}
-		
+
 		// Aggregation
 		for _, stat := range dailyStats {
 			total += stat.Total
@@ -351,11 +353,11 @@ func (h *AttendanceHandler) GetDashboardStats(c *gin.Context) {
 	} else if period == "custom" {
 		startDateStr := c.Query("start_date")
 		endDateStr := c.Query("end_date")
-		
+
 		// Parse dates
 		s, err1 := time.Parse("2006-01-02", startDateStr)
 		e, err2 := time.Parse("2006-01-02", endDateStr)
-		
+
 		if err1 != nil || err2 != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid date format. Use YYYY-MM-DD"})
 			return
@@ -369,7 +371,7 @@ func (h *AttendanceHandler) GetDashboardStats(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch daily stats"})
 			return
 		}
-		
+
 		// Aggregation
 		for _, stat := range dailyStats {
 			total += stat.Total
@@ -398,11 +400,9 @@ func (h *AttendanceHandler) GetDashboardStats(c *gin.Context) {
 		graphData = hourlyStats
 	}
 
-
-
 	// 3. Get Total Employees
-	users, _ := h.userRepo.GetAll(c.Request.Context())
-	totalEmployees := int64(len(users))
+	users, _ = h.userRepo.GetAll(c.Request.Context())
+	totalEmployees = int64(len(users))
 
 	// Calculate Absent
 	var absent int64
@@ -410,13 +410,17 @@ func (h *AttendanceHandler) GetDashboardStats(c *gin.Context) {
 		absent = totalEmployees - total
 	} else {
 		days := int64(endTime.Sub(startTime).Hours() / 24)
-		if days < 1 { days = 1 }
-		
+		if days < 1 {
+			days = 1
+		}
+
 		potentialCheckins := totalEmployees * days
 		absent = potentialCheckins - total
 	}
-	
-	if absent < 0 { absent = 0 }
+
+	if absent < 0 {
+		absent = 0
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"stats": gin.H{
@@ -429,4 +433,3 @@ func (h *AttendanceHandler) GetDashboardStats(c *gin.Context) {
 		"graph_data": graphData,
 	})
 }
-

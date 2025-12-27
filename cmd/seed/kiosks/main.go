@@ -36,7 +36,7 @@ func main() {
 	ctx := context.Background()
 
 	// Get the first office to link the kiosk to
-	offices, err := officeRepo.FindAll(ctx)
+	offices, _, err := officeRepo.FindAll(ctx, 100, 0)
 	if err != nil {
 		log.Fatalf("Failed to get offices: %v", err)
 	}
@@ -54,11 +54,11 @@ func main() {
 	}
 
 	newKiosk := &models.Kiosk{
-		KioskID:   kioskID,
-		Name:      "Main Entrance Kiosk",
-		OfficeID:  offices[0].ID,
-		IsActive:  true,
-		LastSeen:  time.Now(),
+		KioskID:  kioskID,
+		Name:     "Main Entrance Kiosk",
+		OfficeID: offices[0].ID,
+		IsActive: true,
+		LastSeen: time.Now(),
 	}
 
 	if err := kioskRepo.Create(ctx, newKiosk); err != nil {
