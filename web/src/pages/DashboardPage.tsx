@@ -2,7 +2,7 @@
 // Dashboard Page with Stats
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { adminAPI } from '../api/client';
+import { adminAPI, BACKEND_URL } from '../api/client';
 import type { Attendance } from '../api/client';
 import {
     Users, Clock, AlertTriangle, CheckCircle, Calendar,
@@ -12,6 +12,7 @@ import {
     BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis,
     CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
+import SortableHeader, { type SortConfig, sortData } from '../components/SortableHeader';
 
 export default function DashboardPage() {
     const [wsConnected, setWsConnected] = useState(false);
@@ -21,6 +22,17 @@ export default function DashboardPage() {
     const [customStart, setCustomStart] = useState(new Date().toISOString().split('T')[0]);
     const [customEnd, setCustomEnd] = useState(new Date().toISOString().split('T')[0]);
     const [chartType, setChartType] = useState<'bar' | 'line' | 'area'>('bar');
+    const [sortConfig, setSortConfig] = useState<SortConfig>({ key: '', direction: null });
+
+    const handleSort = (key: string) => {
+        setSortConfig(prev => {
+            if (prev.key === key) {
+                if (prev.direction === 'asc') return { key, direction: 'desc' };
+                if (prev.direction === 'desc') return { key: '', direction: null };
+            }
+            return { key, direction: 'asc' };
+        });
+    };
 
     // 1. Dashboard Stats (Cards & Graph) -- Depends on Period
     const { data: statsData, refetch } = useQuery({
@@ -65,10 +77,9 @@ export default function DashboardPage() {
 
     // WebSocket connection
     useEffect(() => {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-
-        const wsUrl = `${protocol}//${host}/ws/dashboard`;
+        // Use BACKEND_URL for WebSocket connection (replace http with ws)
+        const wsBaseUrl = BACKEND_URL.replace(/^http/, 'ws');
+        const wsUrl = `${wsBaseUrl}/ws/dashboard`;
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
@@ -282,14 +293,14 @@ export default function DashboardPage() {
                         <table className="w-full">
                             <thead className="bg-slate-950/50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Karyawan</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Check In</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Check Out</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Status</th>
+                                    <SortableHeader label="Karyawan" sortKey="user.name" currentSort={sortConfig} onSort={handleSort} />
+                                    <SortableHeader label="Check In" sortKey="check_in_time" currentSort={sortConfig} onSort={handleSort} />
+                                    <SortableHeader label="Check Out" sortKey="check_out_time" currentSort={sortConfig} onSort={handleSort} />
+                                    <SortableHeader label="Status" sortKey="is_late" currentSort={sortConfig} onSort={handleSort} />
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800">
-                                {todayAttendance.map((attendance: Attendance) => (
+                                {(sortData(todayAttendance, sortConfig) as Attendance[]).map((attendance: Attendance) => (
                                     <tr key={attendance.id} className="hover:bg-slate-800/50 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className="font-medium text-white">{attendance.user?.name || attendance.user_name || 'Unknown'}</span>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Save, AlertCircle, Camera } from 'lucide-react';
-import { adminAPI, employeeAPI, type User, type CreateUserRequest, type UpdateUserRequest, type Office, type Employee } from '../api/client';
+import { adminAPI, employeeAPI, getUploadUrl, type User, type CreateUserRequest, type UpdateUserRequest, type Office, type Employee } from '../api/client';
 
 
 interface UserFormModalProps {
@@ -51,7 +51,7 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
             setRole(user.role);
             setIsActive(user.is_active);
             setPassword('');
-            setPreviewUrl(user.avatar_url ? user.avatar_url : '');
+            setPreviewUrl(user.avatar_url ? getUploadUrl(user.avatar_url)! : '');
             setOfficeId(user.office_id || '');
         } else {
             setName('');

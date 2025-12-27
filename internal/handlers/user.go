@@ -7,13 +7,14 @@ import (
 	"path/filepath"
 	"time"
 
+	"encoding/json"
+	"strconv"
+
 	"github.com/attendance-system/internal/models"
 	"github.com/attendance-system/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
-	"strconv"
-	"encoding/json"
 )
 
 // UserHandler handles user-related endpoints
@@ -40,7 +41,6 @@ func NewUserHandler(
 		defaultOfficeLong: defaultOfficeLong,
 	}
 }
-
 
 // UpdateFaceEmbeddingsRequest represents the face embeddings update payload
 type UpdateFaceEmbeddingsRequest struct {
@@ -148,6 +148,8 @@ func (h *UserHandler) GetAllUsers(c *gin.Context) {
 		Position:         c.Query("position"),
 		Gender:           c.Query("gender"),
 		EmploymentStatus: c.Query("employment_status"),
+		SortBy:           c.Query("sort_by"),
+		SortOrder:        c.Query("sort_order"),
 	}
 
 	if activeStr := c.Query("is_active"); activeStr != "" {
@@ -343,7 +345,6 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 	c.JSON(http.StatusCreated, user)
 }
 
-
 // UpdateUserRequest represents update user payload
 type UpdateUserRequest struct {
 	Name     string `json:"name"`
@@ -432,7 +433,6 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-
 // DeleteUser deletes a user (admin only)
 // DELETE /api/admin/users/:id
 func (h *UserHandler) DeleteUser(c *gin.Context) {
@@ -498,6 +498,13 @@ func (h *UserHandler) UploadAvatar(c *gin.Context) {
 	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user profile"})
 		return
+	}
+
+	// Sync avatar to linked Employee's PhotoURL
+	employee, err := h.employeeRepo.FindByUserID(c.Request.Context(), userID)
+	if err == nil && employee != nil {
+		employee.PhotoURL = avatarURL
+		h.employeeRepo.Update(c.Request.Context(), employee)
 	}
 
 	c.JSON(http.StatusOK, gin.H{

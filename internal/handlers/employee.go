@@ -8,12 +8,13 @@ import (
 	"strconv"
 	"time"
 
+	"encoding/json"
+
 	"github.com/attendance-system/internal/models"
 	"github.com/attendance-system/internal/repository"
 	"github.com/attendance-system/internal/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"encoding/json"
 )
 
 type EmployeeHandler struct {
@@ -58,7 +59,7 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Email, Password, and Name are required for new user"})
 			return
 		}
-		
+
 		hashedPassword, err := utils.HashPassword(req.Password)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
@@ -96,7 +97,7 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 	employee.Name = req.Name // Map top-level Name to Employee struct
 	employee.ID = uuid.New()
 	employee.UserID = userID
-	
+
 	// Ensure relations have IDs if not set
 	for i := range employee.WorkExperiences {
 		if employee.WorkExperiences[i].ID == uuid.Nil {
@@ -104,7 +105,7 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 		}
 		employee.WorkExperiences[i].EmployeeID = employee.ID
 	}
-	
+
 	for i := range employee.EmployeeEvaluations {
 		if employee.EmployeeEvaluations[i].ID == uuid.Nil {
 			employee.EmployeeEvaluations[i].ID = uuid.New()
@@ -175,13 +176,15 @@ func (h *EmployeeHandler) GetEmployee(c *gin.Context) {
 func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	
+
 	filters := repository.EmployeeFilters{
 		OfficeID:         c.Query("office_id"),
 		Name:             c.Query("name"),
 		Position:         c.Query("position"),
 		EmploymentStatus: c.Query("employment_status"),
 		Gender:           c.Query("gender"),
+		SortBy:           c.Query("sort_by"),
+		SortOrder:        c.Query("sort_order"),
 	}
 
 	// Parse Dynamic Filters JSON
@@ -204,7 +207,6 @@ func (h *EmployeeHandler) GetAllEmployees(c *gin.Context) {
 		"total": total,
 	})
 }
-
 
 // DeleteEmployee deletes an employee
 // DELETE /api/admin/employees/:id
@@ -272,6 +274,15 @@ func (h *EmployeeHandler) UploadPhoto(c *gin.Context) {
 		return
 	}
 
+	// Sync photo to linked User's AvatarURL
+	if employee.UserID != nil {
+		user, err := h.userRepo.FindByID(c.Request.Context(), *employee.UserID)
+		if err == nil && user != nil {
+			user.AvatarURL = photoURL
+			h.userRepo.Update(c.Request.Context(), user)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":   "Photo uploaded successfully",
 		"photo_url": photoURL,
@@ -325,11 +336,11 @@ func (h *EmployeeHandler) ImportEmployees(c *gin.Context) {
 
 	for i := 1; i < len(records); i++ {
 		record := records[i]
-		
+
 		// Mandatory Fields
 		nik := getValue(record, "NIK")
 		name := getValue(record, "Nama Lengkap")
-		
+
 		if nik == "" || name == "" {
 			errors = append(errors, fmt.Sprintf("Row %d: Missing NIK or Name", i+1))
 			skippedCount++
@@ -370,11 +381,11 @@ func (h *EmployeeHandler) ImportEmployees(c *gin.Context) {
 		// 2. Parse Date
 		joinDate, err := time.Parse("2006-01-02", joinDateStr)
 		if err != nil {
-			joinDate = time.Now() 
+			joinDate = time.Now()
 		}
 
 		empID := uuid.New()
-		
+
 		// 3. Populate All Fields
 		emp := models.Employee{
 			ID:               empID,
@@ -384,7 +395,7 @@ func (h *EmployeeHandler) ImportEmployees(c *gin.Context) {
 			OfficeID:         officeID,
 			StartDate:        joinDate,
 			EmploymentStatus: getValue(record, "Status Karyawan"), // PKWT/Tetap
-			
+
 			// Biodata
 			KTPNumber:       getValue(record, "No KTP"),
 			Gender:          getValue(record, "Gender (L/P)"),
@@ -394,19 +405,19 @@ func (h *EmployeeHandler) ImportEmployees(c *gin.Context) {
 			ResidenceStatus: getValue(record, "Status Tempat Tinggal"),
 			Religion:        getValue(record, "Agama"),
 			BloodType:       getValue(record, "Golongan Darah"),
-			
+
 			// Emergency
 			EmergencyContactName:     getValue(record, "Nama Kontak Darurat"),
 			EmergencyContactPhone:    getValue(record, "No HP Kontak Darurat"),
 			EmergencyContactRelation: getValue(record, "Hubungan Kontak Darurat"),
-			
+
 			// Bank & Tax
 			BankAccount:     getValue(record, "No Rekening"),
 			BankName:        getValue(record, "Nama Bank"),
 			BPJSKesehatan:   getValue(record, "BPJS Kesehatan"),
 			BPJSTenagaKerja: getValue(record, "BPJS Ketenagakerjaan"),
 			NPWP:            getValue(record, "NPWP"),
-			
+
 			// Education
 			Education:    getValue(record, "Pendidikan Terakhir"),
 			Grade:        getValue(record, "Grade"),
@@ -442,15 +453,15 @@ func (h *EmployeeHandler) ImportEmployees(c *gin.Context) {
 		}
 
 		hashedPwd, _ := utils.HashPassword("123456") // Default Password
-		
+
 		user := models.User{
-			Name:         name,
-			Email:        email,
-			PasswordHash: hashedPwd,
-			Role:         "employee",
-			EmployeeID:   nik,
-			IsActive:     true,
-			OfficeID:     &officeID,
+			Name:          name,
+			Email:         email,
+			PasswordHash:  hashedPwd,
+			Role:          "employee",
+			EmployeeID:    nik,
+			IsActive:      true,
+			OfficeID:      &officeID,
 			AllowedRadius: allowedRadius,
 		}
 

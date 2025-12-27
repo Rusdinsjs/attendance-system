@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { authAPI, publicAPI } from '../api/client';
+import { authAPI, publicAPI, getUploadUrl } from '../api/client';
 import { LogIn, AlertCircle, Eye, EyeOff, Building2, MapPin } from 'lucide-react';
 
 interface CompanySettings {
@@ -78,7 +78,7 @@ export default function LoginPage() {
                         <div className="relative inline-flex items-center justify-center w-20 h-20 bg-slate-900 border border-slate-700/50 rounded-2xl shadow-xl overflow-hidden transform group-hover:scale-105 transition duration-300">
                             {companySettings.company_logo ? (
                                 <img
-                                    src={companySettings.company_logo}
+                                    src={getUploadUrl(companySettings.company_logo)!}
                                     alt="Logo"
                                     className="w-full h-full object-contain p-2"
                                 />

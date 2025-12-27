@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { employeeAPI, adminAPI } from '../api/client';
+import { employeeAPI, adminAPI, getUploadUrl } from '../api/client';
 import type { Employee } from '../types/employee';
 import { Plus, Search, Edit, Trash2, MapPin, Briefcase, User, ChevronLeft, ChevronRight, Eye, Upload, Filter } from 'lucide-react';
 import EmployeeForm from '../components/employees/EmployeeForm';
 import EmployeeImportModal from '../components/employees/EmployeeImportModal';
 import EmployeeFilters from '../components/employees/EmployeeFilters';
 import AdvancedFilterBuilder, { type DynamicFilter } from '../components/employees/AdvancedFilterBuilder';
+import SortableHeader, { type SortConfig } from '../components/SortableHeader';
 
 export default function EmployeePage() {
     const [employees, setEmployees] = useState<Employee[]>([]);
@@ -28,6 +29,17 @@ export default function EmployeePage() {
     // Custom Filters
     const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
     const [dynamicFilters, setDynamicFilters] = useState<DynamicFilter[]>([]);
+    const [sortConfig, setSortConfig] = useState<SortConfig>({ key: '', direction: null });
+
+    const handleSort = (key: string) => {
+        setSortConfig(prev => {
+            if (prev.key === key) {
+                if (prev.direction === 'asc') return { key, direction: 'desc' };
+                if (prev.direction === 'desc') return { key: '', direction: null };
+            }
+            return { key, direction: 'asc' };
+        });
+    };
 
     useEffect(() => {
         fetchOffices();
@@ -36,7 +48,7 @@ export default function EmployeePage() {
     useEffect(() => {
         fetchEmployees();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, search, filters, dynamicFilters]);
+    }, [page, search, filters, dynamicFilters, sortConfig]);
 
     const fetchOffices = async () => {
         try {
@@ -55,6 +67,8 @@ export default function EmployeePage() {
                 offset: (page - 1) * 10,
                 name: search,
                 filters: JSON.stringify(dynamicFilters),
+                sort_by: sortConfig.key || undefined,
+                sort_order: sortConfig.direction || undefined,
                 ...filters
             });
             setEmployees(res.data.data);
@@ -155,10 +169,10 @@ export default function EmployeePage() {
                 <table className="w-full">
                     <thead>
                         <tr className="border-b border-white/5 bg-white/5">
-                            <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Karyawan</th>
-                            <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Jabatan & Kantor</th>
-                            <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Kontak</th>
+                            <SortableHeader label="Karyawan" sortKey="name" currentSort={sortConfig} onSort={handleSort} />
+                            <SortableHeader label="Jabatan & Kantor" sortKey="position" currentSort={sortConfig} onSort={handleSort} />
+                            <SortableHeader label="Status" sortKey="employment_status" currentSort={sortConfig} onSort={handleSort} />
+                            <SortableHeader label="Kontak" sortKey="user.email" currentSort={sortConfig} onSort={handleSort} />
                             <th className="px-6 py-4 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Aksi</th>
                         </tr>
                     </thead>
@@ -172,9 +186,17 @@ export default function EmployeePage() {
                                 <tr key={emp.id} className="hover:bg-white/5 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center text-cyan-400 border border-white/10">
-                                                <User size={18} />
-                                            </div>
+                                            {emp.photo_url ? (
+                                                <img
+                                                    src={getUploadUrl(emp.photo_url)!}
+                                                    alt={emp.name}
+                                                    className="w-10 h-10 rounded-full object-cover border border-white/10"
+                                                />
+                                            ) : (
+                                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center text-cyan-400 border border-white/10">
+                                                    {emp.name?.charAt(0).toUpperCase() || <User size={18} />}
+                                                </div>
+                                            )}
                                             <div>
                                                 <div className="font-medium text-white">{(emp.user as any)?.name || emp.nik}</div>
                                                 <div className="text-xs text-slate-500">NIK: {emp.nik}</div>

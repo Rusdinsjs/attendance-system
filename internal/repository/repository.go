@@ -2,8 +2,8 @@ package repository
 
 import (
 	"context"
-	"time"
 	"fmt"
+	"time"
 
 	"github.com/attendance-system/internal/models"
 	"github.com/google/uuid"
@@ -26,6 +26,8 @@ type UserFilters struct {
 	Gender           string
 	EmploymentStatus string
 	DynamicFilters   []DynamicFilter
+	SortBy           string
+	SortOrder        string // "asc" or "desc"
 }
 
 // NewUserRepository creates a new user repository
@@ -113,7 +115,7 @@ func (r *UserRepository) FindAll(ctx context.Context, filters UserFilters, limit
 	// Join with Employees for extra filters
 	if filters.Position != "" || filters.Gender != "" || filters.EmploymentStatus != "" {
 		query = query.Joins("LEFT JOIN employees ON employees.user_id = users.id")
-		
+
 		if filters.Position != "" {
 			query = query.Where("employees.position ILIKE ?", "%"+filters.Position+"%")
 		}
@@ -145,7 +147,31 @@ func (r *UserRepository) FindAll(ctx context.Context, filters UserFilters, limit
 		return nil, 0, err
 	}
 
-	err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&users).Error
+	// Sorting
+	orderBy := "users.created_at"
+	orderDir := "DESC"
+
+	sortMap := map[string]string{
+		"name":                     "users.name",
+		"email":                    "users.email",
+		"employee_id":              "users.employee_id",
+		"role":                     "users.role",
+		"is_active":                "users.is_active",
+		"face_verification_status": "users.face_verification_status",
+		"created_at":               "users.created_at",
+	}
+
+	if filters.SortBy != "" {
+		if val, ok := sortMap[filters.SortBy]; ok {
+			orderBy = val
+		}
+	}
+
+	if filters.SortOrder == "asc" || filters.SortOrder == "ASC" {
+		orderDir = "ASC"
+	}
+
+	err := query.Order(fmt.Sprintf("%s %s", orderBy, orderDir)).Limit(limit).Offset(offset).Find(&users).Error
 	return users, total, err
 }
 
@@ -165,7 +191,7 @@ func (r *UserRepository) Delete(ctx context.Context, userID uuid.UUID) error {
 func (r *UserRepository) FindByFaceStatus(ctx context.Context, status string, limit, offset int) ([]models.User, int64, error) {
 	var users []models.User
 	var total int64
-	
+
 	query := r.db.WithContext(ctx).Model(&models.User{}).
 		Where("face_verification_status = ?", status)
 
@@ -220,7 +246,6 @@ func (r *FacePhotoRepository) DeleteByUserID(ctx context.Context, userID uuid.UU
 	return r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&models.FacePhoto{}).Error
 }
 
-
 // AttendanceFilters contains filter criteria for attendance reports
 type AttendanceFilters struct {
 	StartDate string
@@ -261,11 +286,11 @@ func (r *AttendanceRepository) FindByID(ctx context.Context, id uuid.UUID) (*mod
 func (r *AttendanceRepository) FindTodayByUserID(ctx context.Context, userID uuid.UUID) (*models.Attendance, error) {
 	var attendance models.Attendance
 	today := time.Now().Format("2006-01-02")
-	
+
 	err := r.db.WithContext(ctx).
 		Where("user_id = ? AND DATE(check_in_time) = ?", userID, today).
 		First(&attendance).Error
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -293,20 +318,20 @@ func (r *AttendanceRepository) GetHistory(ctx context.Context, userID uuid.UUID,
 func (r *AttendanceRepository) FindAll(ctx context.Context, filters AttendanceFilters, limit, offset int) ([]models.Attendance, int64, error) {
 	var attendances []models.Attendance
 	var total int64
-	
+
 	query := r.db.WithContext(ctx).Model(&models.Attendance{}).
 		Preload("User").
-		Preload("User.Office"). // Preload Office for User
+		Preload("User.Office").   // Preload Office for User
 		Preload("User.Employee"). // Preload Employee for User
 		Joins("JOIN users ON users.id = attendances.user_id").
 		Joins("LEFT JOIN employees ON employees.user_id = users.id") // Join employees for position
-	
+
 	// Date Range Filter
 	if filters.StartDate != "" && filters.EndDate != "" {
 		query = query.Where("DATE(attendances.check_in_time) BETWEEN ? AND ?", filters.StartDate, filters.EndDate)
 	} else {
-		// Default to today if no date provided? Or all? 
-		// Previous logic defaulted to Today. Let's keep that default if completely empty, 
+		// Default to today if no date provided? Or all?
+		// Previous logic defaulted to Today. Let's keep that default if completely empty,
 		// but usually reports module sends dates.
 		if filters.StartDate == "" && filters.EndDate == "" {
 			today := time.Now().Format("2006-01-02")
@@ -348,7 +373,7 @@ func (r *AttendanceRepository) FindAll(ctx context.Context, filters AttendanceFi
 
 	orderBy := "attendances.check_in_time" // Default
 	orderDir := "DESC"
-	
+
 	if filters.SortBy != "" {
 		if val, ok := sortMap[filters.SortBy]; ok {
 			orderBy = val
@@ -357,12 +382,12 @@ func (r *AttendanceRepository) FindAll(ctx context.Context, filters AttendanceFi
 			orderBy = filters.SortBy
 		}
 	}
-	
+
 	if filters.SortOrder == "ASC" || filters.SortOrder == "asc" {
 		orderDir = "ASC"
 	}
 
-	// Special case for office name sorting if needed, requires another Join if not already preloaded 
+	// Special case for office name sorting if needed, requires another Join if not already preloaded
 	// (GORM Preload doesn't join for sorting).
 	// We joined Users. We would need to join Offices to sort by Office Name.
 	// Assume OfficeID sort for now or client handles mapping.
@@ -371,7 +396,7 @@ func (r *AttendanceRepository) FindAll(ctx context.Context, filters AttendanceFi
 		Limit(limit).
 		Offset(offset).
 		Find(&attendances).Error
-	
+
 	return attendances, total, err
 }
 
@@ -439,8 +464,8 @@ func (r *AttendanceRepository) GetDailyStats(ctx context.Context, startTime, end
 
 	err := r.db.WithContext(ctx).Model(&models.Attendance{}).
 		Joins("JOIN users ON users.id = attendances.user_id").
-		Select("TO_CHAR(check_in_time, 'YYYY-MM-DD') as date, COUNT(*) as total, " +
-			"SUM(CASE WHEN is_late = false THEN 1 ELSE 0 END) as present, " +
+		Select("TO_CHAR(check_in_time, 'YYYY-MM-DD') as date, COUNT(*) as total, "+
+			"SUM(CASE WHEN is_late = false THEN 1 ELSE 0 END) as present, "+
 			"SUM(CASE WHEN is_late = true THEN 1 ELSE 0 END) as late").
 		Where("check_in_time BETWEEN ? AND ?", startTime, endTime).
 		Group("TO_CHAR(check_in_time, 'YYYY-MM-DD')").
@@ -457,8 +482,8 @@ func (r *AttendanceRepository) GetHourlyStats(ctx context.Context, startTime, en
 	// Group by H (Hour 0-23)
 	// TO_CHAR(check_in_time, 'HH24:00') returns like "09:00", "14:00"
 	err := r.db.WithContext(ctx).Model(&models.Attendance{}).
-		Select("TO_CHAR(check_in_time, 'HH24:00') as hour, COUNT(*) as total, " +
-			"SUM(CASE WHEN is_late = false THEN 1 ELSE 0 END) as present, " +
+		Select("TO_CHAR(check_in_time, 'HH24:00') as hour, COUNT(*) as total, "+
+			"SUM(CASE WHEN is_late = false THEN 1 ELSE 0 END) as present, "+
 			"SUM(CASE WHEN is_late = true THEN 1 ELSE 0 END) as late").
 		Where("check_in_time BETWEEN ? AND ?", startTime, endTime).
 		Group("TO_CHAR(check_in_time, 'HH24:00')").

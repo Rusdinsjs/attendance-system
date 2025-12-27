@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { adminAPI, employeeAPI } from '../../api/client';
+import { adminAPI, employeeAPI, getUploadUrl } from '../../api/client';
 import type { Employee, WorkExperience, EmployeeEvaluation } from '../../types/employee';
 import { X, Plus, Trash2, Upload, User, Camera } from 'lucide-react';
 
@@ -55,7 +55,7 @@ export default function EmployeeForm({ isOpen, onClose, onSuccess, employee, rea
         if (employee) {
             setFormData(employee);
             if (employee.photo_url) {
-                setPhotoPreview(employee.photo_url);
+                setPhotoPreview(getUploadUrl(employee.photo_url)!);
             }
         } else {
             setFormData({

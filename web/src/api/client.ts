@@ -1,7 +1,18 @@
 // API Client for Admin Dashboard
 import axios from 'axios';
 
-const API_BASE_URL = '/api';
+// In dev mode with Vite proxy, use '/api'. In production, use full backend URL.
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+
+// Backend base URL for uploads and other resources
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
+
+// Helper to get full URL for uploaded files
+export const getUploadUrl = (path: string | null | undefined): string | null => {
+    if (!path) return null;
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    return `${BACKEND_URL}${path}`;
+};
 
 const apiClient = axios.create({
     baseURL: API_BASE_URL,

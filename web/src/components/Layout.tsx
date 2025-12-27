@@ -1,7 +1,7 @@
 // Main Layout with Sidebar and Header Notifications
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { adminAPI } from '../api/client';
+import { adminAPI, getUploadUrl } from '../api/client';
 import {
     LayoutDashboard, Users, FileText, LogOut, Menu, X,
     UserCheck, MapPinned, Settings, Building, Bell,
@@ -220,7 +220,7 @@ export default function Layout() {
                     {sidebarOpen && (
                         companySettings.logo ? (
                             <div className="flex items-center gap-3">
-                                <img src={companySettings.logo} alt="Logo" className="w-8 h-8 object-contain rounded" />
+                                <img src={getUploadUrl(companySettings.logo)!} alt="Logo" className="w-8 h-8 object-contain rounded" />
                                 <span className="text-lg font-bold text-white truncate max-w-[140px]">{companySettings.name}</span>
                             </div>
                         ) : (
@@ -328,9 +328,17 @@ export default function Layout() {
 
                     {/* User Info */}
                     <div className="flex items-center gap-3 pl-4 border-l border-slate-800">
-                        <div className="w-9 h-9 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-cyan-900/20">
-                            {user?.name?.charAt(0).toUpperCase() || 'U'}
-                        </div>
+                        {user?.avatar_url ? (
+                            <img
+                                src={getUploadUrl(user.avatar_url)!}
+                                alt={user?.name || 'User'}
+                                className="w-9 h-9 rounded-full object-cover border-2 border-cyan-500/50 shadow-lg shadow-cyan-900/20"
+                            />
+                        ) : (
+                            <div className="w-9 h-9 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-cyan-900/20">
+                                {user?.name?.charAt(0).toUpperCase() || 'U'}
+                            </div>
+                        )}
                         <div className="hidden sm:block">
                             <p className="text-sm font-medium text-white">{user?.name}</p>
                             <p className="text-xs text-slate-400 capitalize">{user?.role}</p>

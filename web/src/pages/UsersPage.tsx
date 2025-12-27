@@ -1,7 +1,7 @@
 // Users Management Page
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminAPI } from '../api/client';
+import { adminAPI, getUploadUrl } from '../api/client';
 import type { User, CreateUserRequest, UpdateUserRequest } from '../api/client';
 import { Search, Plus, Edit, Trash2, UserCheck, UserX, QrCode, Download, X, Eye, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -9,6 +9,7 @@ import UserFormModal from '../components/UserFormModal';
 import UserDetailModal from '../components/users/UserDetailModal';
 import EmployeeFilters from '../components/employees/EmployeeFilters';
 import AdvancedFilterBuilder, { type DynamicFilter } from '../components/employees/AdvancedFilterBuilder';
+import SortableHeader, { type SortConfig } from '../components/SortableHeader';
 
 export default function UsersPage() {
     const queryClient = useQueryClient();
@@ -27,6 +28,17 @@ export default function UsersPage() {
     });
     const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
     const [dynamicFilters, setDynamicFilters] = useState<DynamicFilter[]>([]);
+    const [sortConfig, setSortConfig] = useState<SortConfig>({ key: '', direction: null });
+
+    const handleSort = (key: string) => {
+        setSortConfig(prev => {
+            if (prev.key === key) {
+                if (prev.direction === 'asc') return { key, direction: 'desc' };
+                if (prev.direction === 'desc') return { key: '', direction: null };
+            }
+            return { key, direction: 'asc' };
+        });
+    };
 
     const { data: offices } = useQuery({
         queryKey: ['offices'],
@@ -37,13 +49,15 @@ export default function UsersPage() {
     });
 
     const { data, isLoading } = useQuery({
-        queryKey: ['users', page, search, filters, dynamicFilters],
+        queryKey: ['users', page, search, filters, dynamicFilters, sortConfig],
         queryFn: async () => {
             const res = await adminAPI.getUsers({
                 limit: 10,
                 offset: (page - 1) * 10,
                 name: search,
                 filters: JSON.stringify(dynamicFilters),
+                sort_by: sortConfig.key || undefined,
+                sort_order: sortConfig.direction || undefined,
                 ...filters
             });
             return res.data;
@@ -244,24 +258,24 @@ export default function UsersPage() {
                         <table className="w-full">
                             <thead className="bg-slate-950/50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Karyawan</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">ID</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Email</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Role</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Wajah</th>
+                                    <SortableHeader label="Karyawan" sortKey="name" currentSort={sortConfig} onSort={handleSort} />
+                                    <SortableHeader label="ID" sortKey="employee_id" currentSort={sortConfig} onSort={handleSort} />
+                                    <SortableHeader label="Email" sortKey="email" currentSort={sortConfig} onSort={handleSort} />
+                                    <SortableHeader label="Role" sortKey="role" currentSort={sortConfig} onSort={handleSort} />
+                                    <SortableHeader label="Status" sortKey="is_active" currentSort={sortConfig} onSort={handleSort} />
+                                    <SortableHeader label="Wajah" sortKey="face_verification_status" currentSort={sortConfig} onSort={handleSort} />
                                     <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800">
-                                {filteredUsers?.map((user: User) => (
+                                {users?.map((user: User) => (
                                     <tr key={user.id} className="hover:bg-slate-800/50 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-10 h-10 bg-cyan-900/30 rounded-full flex items-center justify-center text-cyan-400 font-semibold overflow-hidden border border-cyan-800/30">
                                                     {user.avatar_url ? (
                                                         <img
-                                                            src={user.avatar_url}
+                                                            src={getUploadUrl(user.avatar_url)!}
                                                             alt={user.name}
                                                             className="w-full h-full object-cover"
                                                             onError={(e) => {

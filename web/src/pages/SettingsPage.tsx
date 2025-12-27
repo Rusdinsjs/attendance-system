@@ -1,6 +1,6 @@
 // Settings Page - Admin
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminAPI } from '../api/client';
+import { adminAPI, getUploadUrl } from '../api/client';
 import { Settings, Save, AlertCircle, Key, Building, MapPin, ScanFace } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
@@ -152,7 +152,7 @@ export default function SettingsPage() {
                                 {companyLogo || logoFile ? (
                                     <div className="w-16 h-16 bg-slate-800 rounded-lg border border-slate-700 flex items-center justify-center overflow-hidden">
                                         <img
-                                            src={logoFile ? URL.createObjectURL(logoFile) : companyLogo!}
+                                            src={logoFile ? URL.createObjectURL(logoFile) : getUploadUrl(companyLogo)!}
                                             alt="Logo"
                                             className="w-full h-full object-contain"
                                         />
