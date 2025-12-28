@@ -118,20 +118,25 @@ type Setting struct {
 
 // OfficeTransferRequest represents a request to change office location
 type OfficeTransferRequest struct {
-	ID                  uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	UserID              uuid.UUID `gorm:"type:uuid;not null" json:"user_id"`
-	CurrentOfficeLat    float64   `gorm:"not null" json:"current_office_lat"`
-	CurrentOfficeLong   float64   `gorm:"not null" json:"current_office_long"`
-	RequestedOfficeLat  float64   `gorm:"not null" json:"requested_office_lat"`
-	RequestedOfficeLong float64   `gorm:"not null" json:"requested_office_long"`
-	RequestedRadius     int       `gorm:"default:50" json:"requested_radius"`
-	Reason              string    `json:"reason,omitempty"`
-	Status              string    `gorm:"default:pending" json:"status"`
-	AdminNote           string    `json:"admin_note,omitempty"`
-	CreatedAt           time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt           time.Time `gorm:"autoUpdateTime" json:"updated_at"`
-	User                *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	ID                  uuid.UUID  `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	UserID              uuid.UUID  `gorm:"type:uuid;not null" json:"user_id"`
+	CurrentOfficeID     *uuid.UUID `gorm:"type:uuid" json:"current_office_id,omitempty"`
+	RequestedOfficeID   *uuid.UUID `gorm:"type:uuid" json:"requested_office_id,omitempty"`
+	CurrentOfficeLat    float64    `gorm:"not null" json:"current_office_lat"`
+	CurrentOfficeLong   float64    `gorm:"not null" json:"current_office_long"`
+	RequestedOfficeLat  float64    `gorm:"not null" json:"requested_office_lat"`
+	RequestedOfficeLong float64    `gorm:"not null" json:"requested_office_long"`
+	RequestedRadius     int        `gorm:"default:50" json:"requested_radius"`
+	Reason              string     `json:"reason,omitempty"`
+	Status              string     `gorm:"default:pending" json:"status"`
+	AdminNote           string     `json:"admin_note,omitempty"`
+	CreatedAt           time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt           time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	User                *User      `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	CurrentOffice       *Office    `gorm:"foreignKey:CurrentOfficeID" json:"current_office,omitempty"`
+	RequestedOffice     *Office    `gorm:"foreignKey:RequestedOfficeID" json:"requested_office,omitempty"`
 }
+
 
 // Kiosk represents a registered kiosk device
 type Kiosk struct {

@@ -56,10 +56,11 @@ func (h *TransferRequestHandler) CreateRequest(c *gin.Context) {
 	}
 
 	var req struct {
-		RequestedOfficeLat  float64 `json:"requested_office_lat" binding:"required"`
-		RequestedOfficeLong float64 `json:"requested_office_long" binding:"required"`
-		RequestedRadius     int     `json:"requested_radius"`
-		Reason              string  `json:"reason"`
+		RequestedOfficeLat  float64    `json:"requested_office_lat" binding:"required"`
+		RequestedOfficeLong float64    `json:"requested_office_long" binding:"required"`
+		RequestedOfficeID   *uuid.UUID `json:"requested_office_id"`
+		RequestedRadius     int        `json:"requested_radius"`
+		Reason              string     `json:"reason"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -72,6 +73,8 @@ func (h *TransferRequestHandler) CreateRequest(c *gin.Context) {
 
 	request := &models.OfficeTransferRequest{
 		UserID:              uid,
+		CurrentOfficeID:     user.OfficeID,
+		RequestedOfficeID:   req.RequestedOfficeID,
 		CurrentOfficeLat:    user.OfficeLat,
 		CurrentOfficeLong:   user.OfficeLong,
 		RequestedOfficeLat:  req.RequestedOfficeLat,
@@ -80,6 +83,7 @@ func (h *TransferRequestHandler) CreateRequest(c *gin.Context) {
 		Reason:              req.Reason,
 		Status:              "pending",
 	}
+
 
 	if err := h.transferRepo.Create(c.Request.Context(), request); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
@@ -159,6 +163,7 @@ func (h *TransferRequestHandler) ApproveRequest(c *gin.Context) {
 	user.OfficeLat = request.RequestedOfficeLat
 	user.OfficeLong = request.RequestedOfficeLong
 	user.AllowedRadius = request.RequestedRadius
+	user.OfficeID = request.RequestedOfficeID
 
 	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user location"})
