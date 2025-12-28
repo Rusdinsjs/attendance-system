@@ -17,17 +17,18 @@ type UserRepository struct {
 
 // UserFilters contains filter criteria for users
 type UserFilters struct {
-	Name             string
-	Email            string
-	Role             string
-	OfficeID         string
-	IsActive         *bool
-	Position         string
-	Gender           string
-	EmploymentStatus string
-	DynamicFilters   []DynamicFilter
-	SortBy           string
-	SortOrder        string // "asc" or "desc"
+	Name                   string
+	Email                  string
+	Role                   string
+	OfficeID               string
+	IsActive               *bool
+	Position               string
+	Gender                 string
+	EmploymentStatus       string
+	FaceVerificationStatus string
+	DynamicFilters         []DynamicFilter
+	SortBy                 string
+	SortOrder              string // "asc" or "desc"
 }
 
 // NewUserRepository creates a new user repository
@@ -43,7 +44,12 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 // FindByID finds a user by ID
 func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	var user models.User
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&user).Error
+	// Preload Office AND Employee.Office to handle data discrepancy
+	err := r.db.WithContext(ctx).
+		Preload("Office").
+		Preload("Employee.Office").
+		Where("id = ?", id).
+		First(&user).Error
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +59,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.Us
 // FindByEmail finds a user by email
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
 	var user models.User
-	err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error
+	err := r.db.WithContext(ctx).Preload("Office").Where("email = ?", email).First(&user).Error
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +69,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*models
 // FindByEmployeeID finds a user by employee ID
 func (r *UserRepository) FindByEmployeeID(ctx context.Context, employeeID string) (*models.User, error) {
 	var user models.User
-	err := r.db.WithContext(ctx).Where("employee_id = ?", employeeID).First(&user).Error
+	err := r.db.WithContext(ctx).Preload("Office").Where("employee_id = ?", employeeID).First(&user).Error
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +91,7 @@ func (r *UserRepository) UpdateFaceEmbeddings(ctx context.Context, userID uuid.U
 // GetAll returns all active users (simple version)
 func (r *UserRepository) GetAll(ctx context.Context) ([]models.User, error) {
 	var users []models.User
-	err := r.db.WithContext(ctx).Where("is_active = ?", true).Find(&users).Error
+	err := r.db.WithContext(ctx).Preload("Office").Where("is_active = ?", true).Find(&users).Error
 	return users, err
 }
 
@@ -110,6 +116,9 @@ func (r *UserRepository) FindAll(ctx context.Context, filters UserFilters, limit
 	}
 	if filters.IsActive != nil {
 		query = query.Where("users.is_active = ?", *filters.IsActive)
+	}
+	if filters.FaceVerificationStatus != "" {
+		query = query.Where("users.face_verification_status = ?", filters.FaceVerificationStatus)
 	}
 
 	// Join with Employees for extra filters
@@ -291,6 +300,18 @@ func (r *AttendanceRepository) FindTodayByUserID(ctx context.Context, userID uui
 		Where("user_id = ? AND DATE(check_in_time) = ?", userID, today).
 		First(&attendance).Error
 
+	if err != nil {
+		return nil, err
+	}
+	return &attendance, nil
+}
+
+// FindByUserAndDate finds attendance for a user on a specific date (format: 2006-01-02)
+func (r *AttendanceRepository) FindByUserAndDate(ctx context.Context, userID uuid.UUID, date string) (*models.Attendance, error) {
+	var attendance models.Attendance
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND DATE(check_in_time) = ?", userID, date).
+		First(&attendance).Error
 	if err != nil {
 		return nil, err
 	}

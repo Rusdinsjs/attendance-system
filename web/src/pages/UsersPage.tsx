@@ -1,7 +1,7 @@
 // Users Management Page
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminAPI, getUploadUrl } from '../api/client';
+import { adminAPI, employeeAPI, getUploadUrl } from '../api/client';
 import type { User, CreateUserRequest, UpdateUserRequest } from '../api/client';
 import { Search, Plus, Edit, Trash2, UserCheck, UserX, QrCode, Download, X, Eye, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -24,7 +24,8 @@ export default function UsersPage() {
         office_id: '',
         position: '',
         employment_status: '',
-        gender: ''
+        gender: '',
+        face_verification_status: ''
     });
     const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
     const [dynamicFilters, setDynamicFilters] = useState<DynamicFilter[]>([]);
@@ -48,6 +49,14 @@ export default function UsersPage() {
         },
     });
 
+    const { data: positionsData } = useQuery({
+        queryKey: ['positions'],
+        queryFn: async () => {
+            const res = await employeeAPI.getPositions();
+            return res.data.positions || [];
+        },
+    });
+
     const { data, isLoading } = useQuery({
         queryKey: ['users', page, search, filters, dynamicFilters, sortConfig],
         queryFn: async () => {
@@ -67,6 +76,10 @@ export default function UsersPage() {
     const users = data?.data || [];
     const total = data?.total || 0;
     const totalPages = Math.ceil(total / 10);
+    // ...
+
+    // ... inside return
+
 
     const createMutation = useMutation({
         mutationFn: adminAPI.createUser,
@@ -186,7 +199,12 @@ export default function UsersPage() {
             {/* Header */}
             <div className="flex items-center justify-between mb-8">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Manajemen User</h1>
+                    <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+                        Manajemen User
+                        <span className="text-sm bg-cyan-500/10 text-cyan-400 px-3 py-1 rounded-full border border-cyan-500/20 font-medium">
+                            {total}
+                        </span>
+                    </h1>
                     <p className="text-slate-400 mt-1">Kelola data karyawan</p>
                 </div>
                 <button
@@ -216,13 +234,14 @@ export default function UsersPage() {
             <div className="mb-6">
                 <EmployeeFilters
                     offices={offices || []}
+                    positions={positionsData || []}
                     filters={filters}
                     onChange={(key, value) => {
                         setFilters(prev => ({ ...prev, [key]: value }));
                         setPage(1);
                     }}
                     onReset={() => {
-                        setFilters({ office_id: '', position: '', employment_status: '', gender: '' });
+                        setFilters({ office_id: '', position: '', employment_status: '', gender: '', face_verification_status: '' });
                         setPage(1);
                     }}
                 />

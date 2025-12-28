@@ -32,8 +32,8 @@ ssh $VPS_USER@$VPS_IP "mkdir -p $APP_DIR/uploads/employees $APP_DIR/public"
 
 # 4. Sync Files to VPS
 echo "🔄 Syncing files to VPS..."
-# Sync Binary, Docker Config, and Migrations (Penting untuk DB)
-rsync -avz attendance-server docker-compose.yml migrations $VPS_USER@$VPS_IP:$APP_DIR/
+# Sync Binary, Docker Config, Migrations, and Face Service
+rsync -avz attendance-server docker-compose.yml migrations face_service $VPS_USER@$VPS_IP:$APP_DIR/
 # Sync Frontend Dist to public folder
 rsync -avz --delete web/dist/ $VPS_USER@$VPS_IP:$APP_DIR/public/
 
@@ -45,6 +45,11 @@ ssh $VPS_USER@$VPS_IP << 'EOF'
     # Jalankan Docker (Postgres & Redis)
     echo "🐳 Starting Databases (Docker)..."
     docker compose up -d postgres redis
+    
+    # Build and start Face Service
+    echo "🤖 Building Face Service (this may take ~20 minutes first time)..."
+    docker compose build face_service
+    docker compose up -d face_service
     
     # Set Permission Binary
     echo "🔑 Setting executable permissions..."

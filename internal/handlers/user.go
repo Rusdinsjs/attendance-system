@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,6 +24,7 @@ type UserHandler struct {
 	userRepo          *repository.UserRepository
 	employeeRepo      *repository.EmployeeRepository
 	officeRepo        *repository.OfficeRepository
+	wsHub             *WebSocketHub
 	defaultOfficeLat  float64
 	defaultOfficeLong float64
 }
@@ -31,12 +34,14 @@ func NewUserHandler(
 	userRepo *repository.UserRepository,
 	employeeRepo *repository.EmployeeRepository,
 	officeRepo *repository.OfficeRepository,
+	wsHub *WebSocketHub,
 	defaultOfficeLat, defaultOfficeLong float64,
 ) *UserHandler {
 	return &UserHandler{
 		userRepo:          userRepo,
 		employeeRepo:      employeeRepo,
 		officeRepo:        officeRepo,
+		wsHub:             wsHub,
 		defaultOfficeLat:  defaultOfficeLat,
 		defaultOfficeLong: defaultOfficeLong,
 	}
@@ -60,6 +65,30 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
+	}
+
+	// Self-healing: If User has no office but Employee has one, sync it
+	if user.OfficeID == nil && user.Employee != nil && user.Employee.OfficeID != uuid.Nil {
+		log.Printf("[Self-Healing] Syncing office for user %s from employee record", user.ID)
+
+		// Copy office data from Employee to User
+		officeID := user.Employee.OfficeID
+		user.OfficeID = &officeID
+
+		// Ensure coordinates are synced too
+		if user.Employee.Office != nil {
+			user.Office = user.Employee.Office
+			user.OfficeLat = user.Employee.Office.Latitude
+			user.OfficeLong = user.Employee.Office.Longitude
+			user.AllowedRadius = user.Employee.Office.Radius
+		}
+
+		// Persist the fix asynchronously
+		go func(u *models.User) {
+			if err := h.userRepo.Update(context.Background(), u); err != nil {
+				log.Printf("[Self-Healing] Failed to persist user update: %v", err)
+			}
+		}(user)
 	}
 
 	c.JSON(http.StatusOK, user)
@@ -141,15 +170,16 @@ func (h *UserHandler) GetAllUsers(c *gin.Context) {
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
 	filters := repository.UserFilters{
-		Name:             c.Query("name"),
-		Email:            c.Query("email"),
-		Role:             c.Query("role"),
-		OfficeID:         c.Query("office_id"),
-		Position:         c.Query("position"),
-		Gender:           c.Query("gender"),
-		EmploymentStatus: c.Query("employment_status"),
-		SortBy:           c.Query("sort_by"),
-		SortOrder:        c.Query("sort_order"),
+		Name:                   c.Query("name"),
+		Email:                  c.Query("email"),
+		Role:                   c.Query("role"),
+		OfficeID:               c.Query("office_id"),
+		Position:               c.Query("position"),
+		Gender:                 c.Query("gender"),
+		EmploymentStatus:       c.Query("employment_status"),
+		FaceVerificationStatus: c.Query("face_verification_status"),
+		SortBy:                 c.Query("sort_by"),
+		SortOrder:              c.Query("sort_order"),
 	}
 
 	if activeStr := c.Query("is_active"); activeStr != "" {
@@ -324,6 +354,11 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
+	// Broadcast update
+	if h.wsHub != nil {
+		h.wsHub.Broadcast(EventUserUpdated, gin.H{"user_id": user.ID})
+	}
+
 	// Link Employee record to this new User
 	if req.Role == "employee" {
 		employee, _ := h.employeeRepo.FindByNIK(c.Request.Context(), req.EmployeeID)
@@ -347,12 +382,13 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 
 // UpdateUserRequest represents update user payload
 type UpdateUserRequest struct {
-	Name     string `json:"name"`
-	Email    string `json:"email" binding:"omitempty,email"`
-	Role     string `json:"role" binding:"omitempty,oneof=admin hr employee"`
-	Password string `json:"password" binding:"omitempty,min=6"`
-	IsActive *bool  `json:"is_active"`
-	OfficeID string `json:"office_id"`
+	Name                   string `json:"name"`
+	Email                  string `json:"email" binding:"omitempty,email"`
+	Role                   string `json:"role" binding:"omitempty,oneof=admin hr employee"`
+	Password               string `json:"password" binding:"omitempty,min=6"`
+	IsActive               *bool  `json:"is_active"`
+	OfficeID               string `json:"office_id"`
+	FaceVerificationStatus string `json:"face_verification_status"` // "none", "pending", "verified", "rejected"
 }
 
 // UpdateUser updates a user (admin only)
@@ -392,6 +428,9 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 	if req.IsActive != nil {
 		user.IsActive = *req.IsActive
 	}
+    if req.FaceVerificationStatus != "" {
+        user.FaceVerificationStatus = req.FaceVerificationStatus
+    }
 	if req.Password != "" {
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 		if err != nil {
@@ -422,6 +461,21 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		// Simplify error handling for now
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user: " + err.Error()})
 		return
+	}
+
+	// Broadcast update to client (mobile/web)
+	if h.wsHub != nil {
+		h.wsHub.Broadcast(EventUserUpdated, gin.H{"user_id": user.ID})
+	}
+
+	// Sync office_id to employees table if user has an employee record
+	if req.OfficeID != "" {
+		employee, err := h.employeeRepo.FindByUserID(c.Request.Context(), userID)
+		if err == nil && employee != nil {
+			officeUUID, _ := uuid.Parse(req.OfficeID)
+			employee.OfficeID = officeUUID
+			h.employeeRepo.Update(c.Request.Context(), employee)
+		}
 	}
 
 	// Preload office for response

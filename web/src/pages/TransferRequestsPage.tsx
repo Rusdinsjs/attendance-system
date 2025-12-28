@@ -1,265 +1,231 @@
-// Transfer Requests Page - Admin
+// Pindah Kantor Page - Admin langsung assign lokasi kantor karyawan
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminAPI } from '../api/client';
-import { MapPin, Check, X, Clock, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
-
-interface TransferRequest {
-    id: string;
-    user_id: string;
-    current_office_lat: number;
-    current_office_long: number;
-    requested_office_lat: number;
-    requested_office_long: number;
-    requested_radius: number;
-    reason: string;
-    status: string;
-    admin_note: string;
-    created_at: string;
-    user?: {
-        id: string;
-        name: string;
-        employee_id: string;
-        email: string;
-    };
-}
+import type { User, Office } from '../api/client';
+import { MapPin, Search, Send, CheckCircle, Building } from 'lucide-react';
 
 export default function TransferRequestsPage() {
     const queryClient = useQueryClient();
-    const [selectedRequest, setSelectedRequest] = useState<TransferRequest | null>(null);
-    const [rejectNote, setRejectNote] = useState('');
+    const [search, setSearch] = useState('');
+    const [selectedUser, setSelectedUser] = useState<User | null>(null);
+    const [selectedOffice, setSelectedOffice] = useState<string>('');
+    const [reason, setReason] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('');
 
-    const [page, setPage] = useState(1);
-    const limit = 10;
-
-    const { data: requestData, isLoading } = useQuery({
-        queryKey: ['transferRequests', page],
+    // Fetch all users
+    const { data: usersData } = useQuery({
+        queryKey: ['users-for-transfer', search],
         queryFn: async () => {
-            const res = await adminAPI.getTransferRequests({
-                limit,
-                offset: (page - 1) * limit
-            });
+            const res = await adminAPI.getUsers({ name: search, limit: 100 });
             return res.data;
         },
     });
 
-    const data = requestData?.requests || [];
-    const total = requestData?.total || 0;
-    const totalPages = Math.ceil(total / limit);
-
-    const approveMutation = useMutation({
-        mutationFn: (id: string) => adminAPI.approveTransferRequest(id),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['transferRequests'] });
-            setSelectedRequest(null);
+    // Fetch all offices
+    const { data: officesData } = useQuery({
+        queryKey: ['offices'],
+        queryFn: async () => {
+            const res = await adminAPI.getOffices();
+            return res.data;
         },
     });
 
-    const rejectMutation = useMutation({
-        mutationFn: ({ id, note }: { id: string; note: string }) =>
-            adminAPI.rejectTransferRequest(id, note),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['transferRequests'] });
-            setSelectedRequest(null);
-            setRejectNote('');
+    const users: User[] = usersData?.data || [];
+    const offices: Office[] = officesData?.offices || [];
+
+    // Mutation to update user's office
+    const updateMutation = useMutation({
+        mutationFn: async ({ userId, officeId }: { userId: string; officeId: string }) => {
+            return adminAPI.updateUser(userId, { office_id: officeId });
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['users'] });
+            const office = offices.find(o => o.id === variables.officeId);
+            setSuccessMessage(`${selectedUser?.name} berhasil dipindahkan ke ${office?.name}`);
+            setSelectedUser(null);
+            setSelectedOffice('');
+            setReason('');
+            setTimeout(() => setSuccessMessage(''), 5000);
         },
     });
 
-    const formatDate = (date: string) =>
-        new Date(date).toLocaleDateString('id-ID', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-        });
+    const handleSubmit = async () => {
+        if (!selectedUser || !selectedOffice) {
+            alert('Pilih karyawan dan kantor tujuan');
+            return;
+        }
 
-    const formatCoords = (lat: number, lng: number) =>
-        `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        setIsSubmitting(true);
+        try {
+            await updateMutation.mutateAsync({ userId: selectedUser.id, officeId: selectedOffice });
+        } catch (error) {
+            alert('Gagal memindahkan karyawan');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleSelectUser = (user: User) => {
+        setSelectedUser(user);
+        setSearch('');
+    };
 
     return (
-        <div className="p-6">
+        <div className="p-6 max-w-3xl mx-auto">
             {/* Header */}
             <div className="mb-8">
                 <h1 className="text-2xl font-bold text-white flex items-center gap-2">
                     <MapPin className="text-cyan-500" />
-                    Permintaan Pindah Lokasi
+                    Pindah Kantor
                 </h1>
                 <p className="text-slate-400 mt-1">
-                    Approve atau tolak permintaan pindah lokasi kantor dari karyawan
+                    Pindahkan karyawan ke kantor/lokasi yang berbeda
                 </p>
             </div>
 
-            {/* Stats */}
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-6 flex items-center gap-3">
-                <AlertCircle className="text-amber-500" size={20} />
-                <span className="text-amber-500">
-                    <strong>{data?.length || 0}</strong> permintaan menunggu persetujuan
-                </span>
-            </div>
-
-            {/* Requests List */}
-            <div className="bg-slate-900 rounded-xl shadow-lg border border-slate-800 overflow-hidden">
-                {isLoading ? (
-                    <div className="p-8 text-center text-slate-400">Loading...</div>
-                ) : data?.length === 0 ? (
-                    <div className="p-8 text-center text-slate-500">
-                        <MapPin size={48} className="mx-auto mb-4 text-slate-700" />
-                        <p>Tidak ada permintaan pindah lokasi</p>
-                    </div>
-                ) : (
-                    <div className="divide-y divide-slate-800">
-                        {data?.map((request: TransferRequest) => (
-                            <div
-                                key={request.id}
-                                className="p-4 hover:bg-slate-800/50 cursor-pointer transition"
-                                onClick={() => setSelectedRequest(request)}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 bg-cyan-900/30 rounded-full flex items-center justify-center">
-                                            <MapPin className="text-cyan-500" size={20} />
-                                        </div>
-                                        <div>
-                                            <p className="font-medium text-white">
-                                                {request.user?.name || 'Unknown'}
-                                            </p>
-                                            <p className="text-sm text-slate-400">
-                                                {request.user?.employee_id} • {request.user?.email}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <div className="text-right">
-                                            <p className="text-sm text-slate-400 flex items-center gap-1">
-                                                <Clock size={14} />
-                                                {formatDate(request.created_at)}
-                                            </p>
-                                        </div>
-                                        <button className="px-3 py-1.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded-lg text-sm hover:bg-cyan-500/20 transition">
-                                            Review
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {/* Pagination */}
-            {!isLoading && total > limit && (
-                <div className="flex justify-end items-center gap-2 mt-4">
-                    <button
-                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                        disabled={page === 1}
-                        className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
-                    >
-                        <ChevronLeft size={16} />
-                    </button>
-                    <span className="text-sm text-slate-400">
-                        Halaman {page} dari {totalPages}
-                    </span>
-                    <button
-                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                        disabled={page === totalPages}
-                        className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-50"
-                    >
-                        <ChevronRight size={16} />
-                    </button>
+            {/* Success Message */}
+            {successMessage && (
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 mb-6 flex items-center gap-3">
+                    <CheckCircle className="text-emerald-500" size={20} />
+                    <span className="text-emerald-400">{successMessage}</span>
                 </div>
             )}
 
-            {/* Detail Modal */}
-            {selectedRequest && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm transition-all">
-                    <div className="bg-slate-900 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-hidden border border-slate-800 animate-in fade-in zoom-in-95 duration-200">
-                        {/* Modal Header */}
-                        <div className="p-6 border-b border-slate-800 bg-slate-950/50">
-                            <div className="flex items-center justify-between">
+            {/* Form */}
+            <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 space-y-6">
+                {/* Step 1: Select Employee */}
+                <div>
+                    <label className="block text-sm text-slate-400 mb-2">
+                        1. Pilih Karyawan
+                    </label>
+                    {selectedUser ? (
+                        <div className="flex items-center justify-between bg-slate-800 rounded-lg p-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-cyan-500/20 rounded-full flex items-center justify-center">
+                                    <span className="text-cyan-400 font-bold">
+                                        {selectedUser.name?.charAt(0).toUpperCase()}
+                                    </span>
+                                </div>
                                 <div>
-                                    <h2 className="text-xl font-bold text-white">
-                                        {selectedRequest.user?.name}
-                                    </h2>
-                                    <p className="text-slate-400">
-                                        {selectedRequest.user?.employee_id}
+                                    <p className="text-white font-medium">{selectedUser.name}</p>
+                                    <p className="text-slate-400 text-sm">
+                                        {selectedUser.employee_id} • {selectedUser.office?.name || 'Belum ada kantor'}
                                     </p>
                                 </div>
-                                <button
-                                    onClick={() => setSelectedRequest(null)}
-                                    className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition"
-                                >
-                                    <X size={20} />
-                                </button>
                             </div>
+                            <button
+                                onClick={() => setSelectedUser(null)}
+                                className="text-slate-400 hover:text-white text-sm"
+                            >
+                                Ganti
+                            </button>
                         </div>
-
-                        {/* Content */}
-                        <div className="p-6 space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-slate-950 rounded-lg p-3 border border-slate-800">
-                                    <p className="text-xs text-slate-500 mb-1">Lokasi Saat Ini</p>
-                                    <p className="font-mono text-sm text-slate-300">
-                                        {formatCoords(selectedRequest.current_office_lat, selectedRequest.current_office_long)}
-                                    </p>
-                                </div>
-                                <div className="bg-cyan-900/10 rounded-lg p-3 border border-cyan-900/20">
-                                    <p className="text-xs text-cyan-500 mb-1">Lokasi Baru</p>
-                                    <p className="font-mono text-sm text-white">
-                                        {formatCoords(selectedRequest.requested_office_lat, selectedRequest.requested_office_long)}
-                                    </p>
-                                    <p className="text-xs text-cyan-500 mt-1">
-                                        Radius: {selectedRequest.requested_radius}m
-                                    </p>
-                                </div>
-                            </div>
-
-                            {selectedRequest.reason && (
-                                <div>
-                                    <p className="text-sm text-slate-400 mb-1">Alasan:</p>
-                                    <p className="text-slate-300 bg-slate-950 border border-slate-800 rounded-lg p-3">
-                                        {selectedRequest.reason}
-                                    </p>
+                    ) : (
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                            <input
+                                type="text"
+                                placeholder="Cari nama karyawan..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="w-full bg-slate-800 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                            />
+                            {search && users.length > 0 && (
+                                <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-700 rounded-lg shadow-xl max-h-60 overflow-y-auto z-10">
+                                    {users.map((user) => (
+                                        <button
+                                            key={user.id}
+                                            onClick={() => handleSelectUser(user)}
+                                            className="w-full text-left px-4 py-3 hover:bg-slate-700 flex items-center gap-3 transition"
+                                        >
+                                            <div className="w-8 h-8 bg-slate-600 rounded-full flex items-center justify-center text-sm text-white">
+                                                {user.name?.charAt(0).toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <p className="text-white">{user.name}</p>
+                                                <p className="text-slate-400 text-xs">
+                                                    {user.employee_id} • {user.office?.name || '-'}
+                                                </p>
+                                            </div>
+                                        </button>
+                                    ))}
                                 </div>
                             )}
-
-                            {/* Reject Note */}
-                            <div>
-                                <label className="text-sm text-slate-400 block mb-2">
-                                    Catatan Penolakan (opsional)
-                                </label>
-                                <input
-                                    type="text"
-                                    value={rejectNote}
-                                    onChange={(e) => setRejectNote(e.target.value)}
-                                    placeholder="Contoh: Lokasi tidak valid..."
-                                    className="w-full px-4 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white placeholder-slate-600"
-                                />
-                            </div>
                         </div>
-
-                        {/* Actions */}
-                        <div className="p-6 border-t border-slate-800 flex gap-4 bg-slate-950/30">
-                            <button
-                                onClick={() => rejectMutation.mutate({ id: selectedRequest.id, note: rejectNote })}
-                                disabled={rejectMutation.isPending}
-                                className="flex-1 py-3 bg-red-500/10 text-red-500 rounded-xl font-medium hover:bg-red-500/20 flex items-center justify-center gap-2 transition"
-                            >
-                                <X size={18} />
-                                {rejectMutation.isPending ? 'Menolak...' : 'Tolak'}
-                            </button>
-                            <button
-                                onClick={() => approveMutation.mutate(selectedRequest.id)}
-                                disabled={approveMutation.isPending}
-                                className="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-medium hover:bg-emerald-600 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20 transition"
-                            >
-                                <Check size={18} />
-                                {approveMutation.isPending ? 'Menyetujui...' : 'Setujui'}
-                            </button>
-                        </div>
-                    </div>
+                    )}
                 </div>
-            )}
+
+                {/* Step 2: Select Target Office */}
+                <div>
+                    <label className="block text-sm text-slate-400 mb-2">
+                        2. Kantor Tujuan
+                    </label>
+                    <div className="relative">
+                        <Building className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                        <select
+                            value={selectedOffice}
+                            onChange={(e) => setSelectedOffice(e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-lg py-3 pl-10 pr-4 text-white appearance-none focus:outline-none focus:border-cyan-500"
+                        >
+                            <option value="">Pilih Kantor Tujuan</option>
+                            {offices.map((office) => (
+                                <option key={office.id} value={office.id}>
+                                    {office.name} - {office.address}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    {selectedOffice && (
+                        <div className="mt-2 p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
+                            {(() => {
+                                const office = offices.find(o => o.id === selectedOffice);
+                                return office ? (
+                                    <div className="text-sm">
+                                        <p className="text-cyan-400 font-medium">{office.name}</p>
+                                        <p className="text-slate-400 text-xs mt-1">{office.address}</p>
+                                        <p className="text-slate-500 text-xs mt-1">
+                                            Koordinat: {office.latitude.toFixed(6)}, {office.longitude.toFixed(6)} • Radius: {office.radius}m
+                                        </p>
+                                    </div>
+                                ) : null;
+                            })()}
+                        </div>
+                    )}
+                </div>
+
+                {/* Step 3: Reason (Optional) */}
+                <div>
+                    <label className="block text-sm text-slate-400 mb-2">
+                        3. Alasan Perpindahan (Opsional)
+                    </label>
+                    <textarea
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        placeholder="Contoh: Rotasi karyawan, pembukaan cabang baru, dll..."
+                        rows={3}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-lg py-3 px-4 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 resize-none"
+                    />
+                </div>
+
+                {/* Submit Button */}
+                <button
+                    onClick={handleSubmit}
+                    disabled={!selectedUser || !selectedOffice || isSubmitting}
+                    className="w-full py-3 bg-cyan-500 hover:bg-cyan-600 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-xl font-medium flex items-center justify-center gap-2 transition shadow-lg shadow-cyan-900/20"
+                >
+                    <Send size={18} />
+                    {isSubmitting ? 'Memproses...' : 'Pindahkan Karyawan'}
+                </button>
+            </div>
+
+            {/* Info */}
+            <div className="mt-6 p-4 bg-slate-900/50 border border-slate-800 rounded-lg">
+                <p className="text-slate-500 text-sm">
+                    💡 Setelah dipindahkan, karyawan akan menggunakan koordinat dan radius kantor baru untuk absensi.
+                </p>
+            </div>
         </div>
     );
 }

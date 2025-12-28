@@ -18,12 +18,14 @@ export default function EmployeePage() {
         office_id: '',
         position: '',
         employment_status: '',
-        gender: ''
+        gender: '',
+        face_verification_status: ''
     });
     const [showForm, setShowForm] = useState(false);
     const [readOnly, setReadOnly] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>(undefined);
     const [offices, setOffices] = useState<any[]>([]);
+    const [positions, setPositions] = useState<string[]>([]);
     const [showImportModal, setShowImportModal] = useState(false);
 
     // Custom Filters
@@ -42,7 +44,7 @@ export default function EmployeePage() {
     };
 
     useEffect(() => {
-        fetchOffices();
+        fetchFilterOptions();
     }, []);
 
     useEffect(() => {
@@ -50,12 +52,19 @@ export default function EmployeePage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [page, search, filters, dynamicFilters, sortConfig]);
 
-    const fetchOffices = async () => {
+    const fetchFilterOptions = async () => {
         try {
-            const res = await adminAPI.getOffices();
-            setOffices(res.data.offices || []);
+            const officesRes = await adminAPI.getOffices();
+            setOffices(officesRes.data.offices || []);
         } catch (error) {
             console.error("Failed to fetch offices", error);
+        }
+
+        try {
+            const positionsRes = await employeeAPI.getPositions();
+            setPositions(positionsRes.data.positions || []);
+        } catch (error) {
+            console.error("Failed to fetch positions", error);
         }
     };
 
@@ -102,8 +111,11 @@ export default function EmployeePage() {
         <div className="p-8">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
+                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400 flex items-center gap-3">
                         Data Karyawan
+                        <span className="text-sm bg-cyan-500/10 text-cyan-400 px-3 py-1 rounded-full border border-cyan-500/20 font-medium">
+                            {total}
+                        </span>
                     </h1>
                     <p className="text-slate-400 mt-1">Kelola data lengkap karyawan, kontrak, dan histori</p>
                 </div>
@@ -140,9 +152,10 @@ export default function EmployeePage() {
 
                 <EmployeeFilters
                     offices={offices}
+                    positions={positions}
                     filters={filters}
                     onChange={(key, value) => setFilters(prev => ({ ...prev, [key]: value }))}
-                    onReset={() => setFilters({ office_id: '', position: '', employment_status: '', gender: '' })}
+                    onReset={() => setFilters({ office_id: '', position: '', employment_status: '', gender: '', face_verification_status: '' })}
                 />
 
                 <div className="mb-4">

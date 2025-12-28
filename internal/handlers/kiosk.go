@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"os"
@@ -760,8 +763,53 @@ func (h *KioskHandler) RegisterFace(c *gin.Context) {
 		}
 	}
 
+	// Extract face embeddings via Python service
+	faceServiceURL := os.Getenv("FACE_SERVICE_URL")
+	if faceServiceURL == "" {
+		faceServiceURL = "http://localhost:5001"
+	}
+
+	// Prepare image paths for Python service
+	var imagePaths []string
+	for _, photo := range savedPhotos {
+		imagePaths = append(imagePaths, photo.PhotoPath)
+	}
+
+	embeddingReqBody, _ := json.Marshal(map[string]interface{}{
+		"image_paths": imagePaths,
+	})
+
+	embeddingResp, err := http.Post(
+		faceServiceURL+"/extract-embeddings",
+		"application/json",
+		bytes.NewBuffer(embeddingReqBody),
+	)
+
+	if err != nil {
+		// Log error but don't fail - embeddings can be added later
+		fmt.Printf("Warning: Failed to call face service: %v\n", err)
+	} else {
+		defer embeddingResp.Body.Close()
+		
+		if embeddingResp.StatusCode == http.StatusOK {
+			respBody, _ := io.ReadAll(embeddingResp.Body)
+			var embeddingResult struct {
+				Success    bool        `json:"success"`
+				Embeddings [][]float64 `json:"embeddings"`
+				Count      int         `json:"count"`
+			}
+			if json.Unmarshal(respBody, &embeddingResult) == nil && embeddingResult.Success {
+				user.FaceEmbeddings = models.FaceEmbeddings(embeddingResult.Embeddings)
+				fmt.Printf("Successfully extracted %d face embeddings\n", embeddingResult.Count)
+			}
+		} else {
+			respBody, _ := io.ReadAll(embeddingResp.Body)
+			fmt.Printf("Warning: Face service returned status %d: %s\n", embeddingResp.StatusCode, string(respBody))
+		}
+	}
+
 	// Update User Status
-	user.FaceVerificationStatus = "approved"
+	user.FaceVerificationStatus = "verified"
 	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user status"})
 		return
@@ -810,3 +858,231 @@ func ternary(cond bool, a, b string) string {
 	}
 	return b
 }
+
+// ========== OFFLINE MODE SUPPORT ==========
+
+// SyncDataResponse contains all data needed for offline kiosk operation
+type SyncDataResponse struct {
+	Employees    []EmployeeSyncData `json:"employees"`
+	LastSyncTime string             `json:"last_sync_time"`
+	OfficeInfo   OfficeSyncData     `json:"office_info"`
+}
+
+type EmployeeSyncData struct {
+	ID             string      `json:"id"`
+	EmployeeID     string      `json:"employee_id"`
+	Name           string      `json:"name"`
+	FaceEmbeddings [][]float64 `json:"face_embeddings"`
+	IsActive       bool        `json:"is_active"`
+}
+
+type OfficeSyncData struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Address   string  `json:"address"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+// SyncData returns all employee data for offline kiosk operation
+// GET /api/kiosk/sync-data
+func (h *KioskHandler) SyncData(c *gin.Context) {
+	kioskID := c.Query("kiosk_id")
+	adminCode := c.Query("code")
+
+	// Verify admin code
+	setting, err := h.settingsRepo.GetByKey(c.Request.Context(), "kiosk_admin_code")
+	expectedCode := "123456"
+	if err == nil && setting != nil {
+		expectedCode = setting.Value
+	}
+
+	if adminCode != expectedCode {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid admin code"})
+		return
+	}
+
+	// Get kiosk to determine office
+	kiosk, err := h.kioskRepo.FindByKioskID(c.Request.Context(), kioskID)
+	if err != nil || kiosk == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Kiosk not found"})
+		return
+	}
+
+	// Get all active employees with face data for this office
+	filters := repository.UserFilters{
+		OfficeID: kiosk.OfficeID.String(),
+	}
+	active := true
+	filters.IsActive = &active
+
+	users, _, err := h.userRepo.FindAll(c.Request.Context(), filters, 1000, 0)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch employees"})
+		return
+	}
+
+	// Transform to sync format
+	var employees []EmployeeSyncData
+	for _, user := range users {
+		if user.FaceVerificationStatus == "verified" && len(user.FaceEmbeddings) > 0 {
+			employees = append(employees, EmployeeSyncData{
+				ID:             user.ID.String(),
+				EmployeeID:     user.EmployeeID,
+				Name:           user.Name,
+				FaceEmbeddings: user.FaceEmbeddings,
+				IsActive:       user.IsActive,
+			})
+		}
+	}
+
+	response := SyncDataResponse{
+		Employees:    employees,
+		LastSyncTime: time.Now().UTC().Format(time.RFC3339),
+		OfficeInfo: OfficeSyncData{
+			ID:        kiosk.Office.ID.String(),
+			Name:      kiosk.Office.Name,
+			Address:   kiosk.Office.Address,
+			Latitude:  kiosk.Office.Latitude,
+			Longitude: kiosk.Office.Longitude,
+		},
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// KioskOfflineSyncRequest represents batch of offline attendance records
+type KioskOfflineSyncRequest struct {
+	KioskID   string                      `json:"kiosk_id" binding:"required"`
+	AdminCode string                      `json:"admin_code" binding:"required"`
+	Records   []KioskOfflineAttendanceRecord `json:"records" binding:"required"`
+}
+
+type KioskOfflineAttendanceRecord struct {
+	EmployeeID string  `json:"employee_id" binding:"required"`
+	Type       string  `json:"type" binding:"required,oneof=check-in check-out"`
+	Timestamp  string  `json:"timestamp" binding:"required"`
+	Confidence float64 `json:"confidence"`
+}
+
+// OfflineSync handles batch synchronization of offline attendance from kiosk
+// POST /api/kiosk/offline-sync
+func (h *KioskHandler) OfflineSync(c *gin.Context) {
+	var req KioskOfflineSyncRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Verify admin code
+	setting, err := h.settingsRepo.GetByKey(c.Request.Context(), "kiosk_admin_code")
+	expectedCode := "123456"
+	if err == nil && setting != nil {
+		expectedCode = setting.Value
+	}
+
+	if req.AdminCode != expectedCode {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid admin code"})
+		return
+	}
+
+	// Verify kiosk
+	kiosk, err := h.kioskRepo.FindByKioskID(c.Request.Context(), req.KioskID)
+	if err != nil || kiosk == nil || !kiosk.IsActive {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or inactive kiosk"})
+		return
+	}
+	_ = h.kioskRepo.UpdateLastSeen(c.Request.Context(), kiosk.ID)
+
+	synced := 0
+	errors := []string{}
+
+	for _, record := range req.Records {
+		// Parse timestamp
+		recordTime, err := time.Parse(time.RFC3339, record.Timestamp)
+		if err != nil {
+			errors = append(errors, "Invalid timestamp: "+record.Timestamp)
+			continue
+		}
+
+		// Reject future timestamps
+		if recordTime.After(time.Now().Add(5 * time.Minute)) {
+			errors = append(errors, "Future timestamp rejected: "+record.Timestamp)
+			continue
+		}
+
+		// Find user
+		user, err := h.userRepo.FindByEmployeeID(c.Request.Context(), record.EmployeeID)
+		if err != nil {
+			errors = append(errors, "Employee not found: "+record.EmployeeID)
+			continue
+		}
+
+		recordDate := recordTime.Format("2006-01-02")
+
+		if record.Type == "check-in" {
+			// Check existing
+			existing, _ := h.attendanceRepo.FindByUserAndDate(c.Request.Context(), user.ID, recordDate)
+			if existing != nil && existing.CheckInTime != nil {
+				errors = append(errors, "Already checked in: "+record.EmployeeID+" on "+recordDate)
+				continue
+			}
+
+			isLate := recordTime.Hour() >= 9 && recordTime.Minute() > 0
+
+			attendance := &models.Attendance{
+				UserID:      user.ID,
+				CheckInTime: &recordTime,
+				CheckInLat:  &user.OfficeLat,
+				CheckInLong: &user.OfficeLong,
+				DeviceInfo:  "Kiosk (offline): " + req.KioskID,
+				IsLate:      isLate,
+				Notes:       fmt.Sprintf("Offline sync | Confidence: %.2f%%", record.Confidence*100),
+			}
+
+			if err := h.attendanceRepo.Create(c.Request.Context(), attendance); err != nil {
+				errors = append(errors, "Failed to create check-in: "+err.Error())
+				continue
+			}
+			synced++
+
+		} else if record.Type == "check-out" {
+			existing, err := h.attendanceRepo.FindByUserAndDate(c.Request.Context(), user.ID, recordDate)
+			if err != nil || existing == nil {
+				errors = append(errors, "No check-in found: "+record.EmployeeID+" on "+recordDate)
+				continue
+			}
+			if existing.CheckOutTime != nil {
+				errors = append(errors, "Already checked out: "+record.EmployeeID+" on "+recordDate)
+				continue
+			}
+
+			existing.CheckOutTime = &recordTime
+			existing.CheckOutLat = &user.OfficeLat
+			existing.CheckOutLong = &user.OfficeLong
+			existing.Notes = existing.Notes + " | Check-out synced offline"
+
+			if err := h.attendanceRepo.Update(c.Request.Context(), existing); err != nil {
+				errors = append(errors, "Failed to update check-out: "+err.Error())
+				continue
+			}
+			synced++
+		}
+	}
+
+	// Broadcast updates if any synced
+	if synced > 0 && h.wsHub != nil {
+		h.wsHub.Broadcast("kiosk:sync", gin.H{
+			"kiosk_id": req.KioskID,
+			"synced":   synced,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Sync completed",
+		"synced":  synced,
+		"errors":  errors,
+	})
+}
+

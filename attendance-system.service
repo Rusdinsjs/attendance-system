@@ -1,0 +1,18 @@
+[Unit]
+Description=Attendance System API
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/attendance
+ExecStart=/var/www/attendance/attendance-server
+Restart=always
+RestartSec=5
+EnvironmentFile=/var/www/attendance/.env
+StandardOutput=append:/var/log/attendance-api.log
+StandardError=append:/var/log/attendance-api.error.log
+
+[Install]
+WantedBy=multi-user.target

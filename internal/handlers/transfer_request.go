@@ -14,16 +14,19 @@ import (
 type TransferRequestHandler struct {
 	transferRepo *repository.TransferRequestRepository
 	userRepo     *repository.UserRepository
+	wsHub        *WebSocketHub
 }
 
 // NewTransferRequestHandler creates a new transfer request handler
 func NewTransferRequestHandler(
 	transferRepo *repository.TransferRequestRepository,
 	userRepo *repository.UserRepository,
+	wsHub *WebSocketHub,
 ) *TransferRequestHandler {
 	return &TransferRequestHandler{
 		transferRepo: transferRepo,
 		userRepo:     userRepo,
+		wsHub:        wsHub,
 	}
 }
 
@@ -160,6 +163,11 @@ func (h *TransferRequestHandler) ApproveRequest(c *gin.Context) {
 	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user location"})
 		return
+	}
+
+	// Broadcast update to client (mobile/web)
+	if h.wsHub != nil {
+		h.wsHub.Broadcast(EventUserUpdated, gin.H{"user_id": user.ID})
 	}
 
 	// Update request status

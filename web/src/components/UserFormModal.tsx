@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, AlertCircle, Camera } from 'lucide-react';
+import { X, Save, AlertCircle, Camera, Eye, EyeOff } from 'lucide-react';
 import { adminAPI, employeeAPI, getUploadUrl, type User, type CreateUserRequest, type UpdateUserRequest, type Office, type Employee } from '../api/client';
 
 
@@ -16,8 +16,10 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
     const [employeeId, setEmployeeId] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [role, setRole] = useState<'admin' | 'hr' | 'employee'>('employee');
     const [isActive, setIsActive] = useState(true);
+    const [resetFace, setResetFace] = useState(false);
     const [error, setError] = useState('');
     const [officeId, setOfficeId] = useState<string>('');
     const [offices, setOffices] = useState<Office[]>([]);
@@ -53,6 +55,7 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
             setPassword('');
             setPreviewUrl(user.avatar_url ? getUploadUrl(user.avatar_url)! : '');
             setOfficeId(user.office_id || '');
+            setResetFace(false);
         } else {
             setName('');
             setEmployeeId('');
@@ -95,6 +98,9 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
 
                 if (password) {
                     data.password = password;
+                }
+                if (resetFace) {
+                    data.face_verification_status = 'none';
                 }
                 await onSubmit(data, avatarFile);
             } else {
@@ -276,29 +282,67 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
                             <label className="block text-sm font-medium text-slate-400 mb-1">
                                 Password {user && <span className="text-slate-600 font-normal">(Kosongkan jika tidak diubah)</span>}
                             </label>
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white placeholder-slate-600 transition"
-                                placeholder={user ? "••••••••" : "Min. 6 karakter"}
-                                required={!user}
-                                minLength={6}
-                            />
+                            <div className="relative">
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none text-white placeholder-slate-600 transition pr-10"
+                                    placeholder={user ? "••••••••" : "Min. 6 karakter"}
+                                    required={!user}
+                                    minLength={6}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition"
+                                >
+                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
                         </div>
 
                         {user && (
-                            <div className="flex items-center gap-2 pt-2">
-                                <input
-                                    type="checkbox"
-                                    id="isActive"
-                                    checked={isActive}
-                                    onChange={(e) => setIsActive(e.target.checked)}
-                                    className="w-4 h-4 text-cyan-500 border-slate-600 rounded focus:ring-cyan-500 bg-slate-950"
-                                />
-                                <label htmlFor="isActive" className="text-sm text-slate-300">
-                                    Akun Aktif
-                                </label>
+                            <div className="flex flex-col gap-3 pt-2">
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="isActive"
+                                        checked={isActive}
+                                        onChange={(e) => setIsActive(e.target.checked)}
+                                        className="w-4 h-4 text-cyan-500 border-slate-600 rounded focus:ring-cyan-500 bg-slate-950"
+                                    />
+                                    <label htmlFor="isActive" className="text-sm text-slate-300">
+                                        Akun Aktif
+                                    </label>
+                                </div>
+
+                                {/* Face Verification Status Section */}
+                                <div className="p-3 bg-slate-900/50 border border-slate-700 rounded-lg">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-sm text-slate-400">Status Verifikasi Wajah</span>
+                                        <span className={`text-xs px-2 py-0.5 rounded-full border ${user.face_verification_status === 'verified'
+                                                ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                                : user.face_verification_status === 'rejected'
+                                                    ? 'bg-red-500/20 text-red-400 border-red-500/30'
+                                                    : 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+                                            }`}>
+                                            {user.face_verification_status?.toUpperCase() || 'NONE'}
+                                        </span>
+                                    </div>
+
+                                    {user.face_verification_status === 'verified' && (
+                                        <label className="flex items-center gap-2 cursor-pointer group mt-2 pt-2 border-t border-slate-800">
+                                            <input
+                                                type="checkbox"
+                                                checked={resetFace}
+                                                onChange={e => setResetFace(e.target.checked)}
+                                                className="w-4 h-4 text-red-500 border-slate-600 rounded focus:ring-red-500 bg-slate-950"
+                                            />
+                                            <span className="text-sm text-slate-400 group-hover:text-red-400 transition">Reset Status (Perlu Registrasi Ulang)</span>
+                                        </label>
+                                    )}
+                                </div>
                             </div>
                         )}
 

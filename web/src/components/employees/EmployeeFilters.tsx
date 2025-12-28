@@ -2,18 +2,20 @@ import { Filter, X } from 'lucide-react';
 import type { Office } from '../../api/client'; // Import Office type from client.ts
 
 interface EmployeeFiltersProps {
-    offices: Office[]; // Use the imported Office type
+    offices: Office[];
+    positions: string[]; // Add positions prop
     filters: {
         office_id: string;
         position: string;
         employment_status: string;
         gender: string;
+        face_verification_status: string;
     };
     onChange: (key: string, value: string) => void;
     onReset: () => void;
 }
 
-export default function EmployeeFilters({ offices, filters, onChange, onReset }: EmployeeFiltersProps) {
+export default function EmployeeFilters({ offices, positions, filters, onChange, onReset }: EmployeeFiltersProps) {
     const hasActiveFilters = Object.values(filters).some(Boolean);
 
     return (
@@ -32,7 +34,7 @@ export default function EmployeeFilters({ offices, filters, onChange, onReset }:
                 )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 {/* Office Filter */}
                 <div>
                     <label className="block text-xs text-slate-500 mb-1.5">Kantor</label>
@@ -48,16 +50,19 @@ export default function EmployeeFilters({ offices, filters, onChange, onReset }:
                     </select>
                 </div>
 
-                {/* Position Filter (You might want to fetch unique positions or predefined list) */}
+                {/* Position Filter */}
                 <div>
                     <label className="block text-xs text-slate-500 mb-1.5">Posisi/Jabatan</label>
-                    <input
-                        type="text"
-                        placeholder="Semua Posisi"
+                    <select
                         value={filters.position}
                         onChange={(e) => onChange('position', e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700/50 rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-cyan-500/50"
-                    />
+                        className="w-full bg-slate-900 border border-slate-700/50 rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-cyan-500/50 appearance-none"
+                    >
+                        <option value="">Semua Posisi</option>
+                        {positions.map((p, idx) => (
+                            <option key={idx} value={p}>{p}</option>
+                        ))}
+                    </select>
                 </div>
 
                 {/* Employment Status */}
@@ -87,6 +92,22 @@ export default function EmployeeFilters({ offices, filters, onChange, onReset }:
                         <option value="">Semua</option>
                         <option value="L">Laki-laki</option>
                         <option value="P">Perempuan</option>
+                    </select>
+                </div>
+
+                {/* Face Verification Status */}
+                <div>
+                    <label className="block text-xs text-slate-500 mb-1.5">Status Wajah</label>
+                    <select
+                        value={filters.face_verification_status}
+                        onChange={(e) => onChange('face_verification_status', e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700/50 rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-cyan-500/50 appearance-none"
+                    >
+                        <option value="">Semua</option>
+                        <option value="verified">✓ Verified</option>
+                        <option value="pending">⏳ Pending</option>
+                        <option value="rejected">✗ Rejected</option>
+                        <option value="none">— Belum</option>
                     </select>
                 </div>
             </div>

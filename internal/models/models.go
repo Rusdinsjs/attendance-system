@@ -63,7 +63,9 @@ type Attendance struct {
 	CheckOutLat    *float64   `json:"check_out_lat,omitempty"`
 	CheckOutLong   *float64   `json:"check_out_long,omitempty"`
 	DeviceInfo     string     `json:"device_info,omitempty"`
-	IsLate         bool       `gorm:"default:false" json:"is_late"`
+	IsLate         bool       `gorm:"default:false" json:"is_late"` // Deprecated in favor of CheckInStatus, kept for compat
+	CheckInStatus  string     `json:"check_in_status"`              // "On Time", "Late"
+	CheckOutStatus string     `json:"check_out_status"`             // "On Time", "Early Departure"
 	IsMockLocation bool       `gorm:"default:false" json:"is_mock_location"`
 	Notes          string     `json:"notes,omitempty"`
 	CreatedAt      time.Time  `gorm:"autoCreateTime" json:"created_at"`
@@ -82,14 +84,18 @@ type RefreshToken struct {
 
 // Office represents a company office location
 type Office struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	Name      string    `gorm:"not null" json:"name"`
-	Address   string    `json:"address"`
-	Latitude  float64   `gorm:"not null" json:"latitude"`
-	Longitude float64   `gorm:"not null" json:"longitude"`
-	Radius    int       `gorm:"default:50" json:"radius"`
-	IsActive  bool      `gorm:"default:true" json:"is_active"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	ID                uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	Name              string    `gorm:"not null" json:"name"`
+	Address           string    `json:"address"`
+	Latitude          float64   `gorm:"not null" json:"latitude"`
+	Longitude         float64   `gorm:"not null" json:"longitude"`
+	Radius            int       `gorm:"default:50" json:"radius"`
+	CheckInTime       string    `gorm:"default:'08:00'" json:"check_in_time"`       // HH:mm
+	CheckOutTime      string    `gorm:"default:'17:00'" json:"check_out_time"`      // HH:mm
+	CheckInTolerance  int       `gorm:"default:30" json:"check_in_tolerance"`       // Minutes
+	CheckOutTolerance int       `gorm:"default:15" json:"check_out_tolerance"`      // Minutes
+	IsActive          bool      `gorm:"default:true" json:"is_active"`
+	CreatedAt         time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
 // FacePhoto represents a temporary face photo pending verification

@@ -101,9 +101,21 @@ func (h *AttendanceHandler) CheckIn(c *gin.Context) {
 		return
 	}
 
-	// Determine if late (example: office starts at 09:00)
+	// Determine CheckIn Status based on Office Settings
 	now := time.Now()
-	isLate := now.Hour() >= 9 && now.Minute() > 0
+	checkInSchedule := "08:00"
+	checkInTolerance := 30
+	if user.Office != nil {
+		if user.Office.CheckInTime != "" {
+			checkInSchedule = user.Office.CheckInTime
+		}
+		if user.Office.CheckInTolerance > 0 {
+			checkInTolerance = user.Office.CheckInTolerance
+		}
+	}
+
+	checkInStatus := utils.DetermineCheckInStatus(now, checkInSchedule, checkInTolerance)
+	isLate := checkInStatus == utils.StatusLate
 
 	// Create attendance record
 	attendance := &models.Attendance{
@@ -113,6 +125,7 @@ func (h *AttendanceHandler) CheckIn(c *gin.Context) {
 		CheckInLong:    &req.Longitude,
 		DeviceInfo:     req.DeviceInfo,
 		IsLate:         isLate,
+		CheckInStatus:  checkInStatus,
 		IsMockLocation: req.IsMockLocation,
 	}
 
@@ -175,19 +188,37 @@ func (h *AttendanceHandler) CheckOut(c *gin.Context) {
 		return
 	}
 
+	// Fetch user to get Office settings
+	user, err := h.userRepo.FindByID(c.Request.Context(), userID.(uuid.UUID))
+	if err != nil {
+		// Log error but proceed with default settings?
+		// Or fail? Using defaults seems safer for checkout.
+	}
+
+	checkOutSchedule := "17:00"
+	checkOutTolerance := 15
+	if user != nil && user.Office != nil {
+		if user.Office.CheckOutTime != "" {
+			checkOutSchedule = user.Office.CheckOutTime
+		}
+		if user.Office.CheckOutTolerance > 0 {
+			checkOutTolerance = user.Office.CheckOutTolerance
+		}
+	}
+
 	// Update checkout
 	now := time.Now()
+	checkOutStatus := utils.DetermineCheckOutStatus(now, checkOutSchedule, checkOutTolerance)
+	
 	attendance.CheckOutTime = &now
 	attendance.CheckOutLat = &req.Latitude
 	attendance.CheckOutLong = &req.Longitude
+	attendance.CheckOutStatus = checkOutStatus
 
 	if err := h.attendanceRepo.Update(c.Request.Context(), attendance); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record check-out"})
 		return
 	}
-
-	// Get user for broadcast
-	user, _ := h.userRepo.FindByID(c.Request.Context(), userID.(uuid.UUID))
 
 	// Broadcast to WebSocket clients
 	if h.wsHub != nil && user != nil {
@@ -433,3 +464,145 @@ func (h *AttendanceHandler) GetDashboardStats(c *gin.Context) {
 		"graph_data": graphData,
 	})
 }
+
+// OfflineSyncRequest represents a batch of offline attendance records
+type OfflineSyncRequest struct {
+	Records []OfflineAttendanceRecord `json:"records" binding:"required"`
+}
+
+// OfflineAttendanceRecord represents a single offline attendance entry
+type OfflineAttendanceRecord struct {
+	Type           string  `json:"type" binding:"required,oneof=check-in check-out"`
+	Latitude       float64 `json:"latitude" binding:"required"`
+	Longitude      float64 `json:"longitude" binding:"required"`
+	Timestamp      string  `json:"timestamp" binding:"required"`
+	DeviceInfo     string  `json:"device_info"`
+	IsMockLocation bool    `json:"is_mock_location"`
+}
+
+// OfflineSync handles batch synchronization of offline attendance records
+// POST /api/attendance/offline-sync
+func (h *AttendanceHandler) OfflineSync(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var req OfflineSyncRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(req.Records) == 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "No records to sync", "synced": 0})
+		return
+	}
+
+	user, err := h.userRepo.FindByID(c.Request.Context(), userID.(uuid.UUID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	synced := 0
+	errors := []string{}
+
+	for _, record := range req.Records {
+		// Parse timestamp from offline record
+		recordTime, err := time.Parse(time.RFC3339, record.Timestamp)
+		if err != nil {
+			errors = append(errors, "Invalid timestamp: "+record.Timestamp)
+			continue
+		}
+
+		// Basic validation: record shouldn't be in the future
+		if recordTime.After(time.Now().Add(5 * time.Minute)) {
+			errors = append(errors, "Future timestamp rejected: "+record.Timestamp)
+			continue
+		}
+
+		// Get date for the record
+		recordDate := recordTime.Format("2006-01-02")
+
+		if record.Type == "check-in" {
+			// Check if already checked in on that date
+			existing, _ := h.attendanceRepo.FindByUserAndDate(c.Request.Context(), userID.(uuid.UUID), recordDate)
+			if existing != nil && existing.CheckInTime != nil {
+				errors = append(errors, "Already checked in on "+recordDate)
+				continue
+			}
+
+			// Determine check-in status
+			checkInSchedule := "08:00"
+			checkInTolerance := 30
+			if user.Office != nil {
+				if user.Office.CheckInTime != "" {
+					checkInSchedule = user.Office.CheckInTime
+				}
+				checkInTolerance = user.Office.CheckInTolerance
+			}
+			checkInStatus := utils.DetermineCheckInStatus(recordTime, checkInSchedule, checkInTolerance)
+
+			attendance := &models.Attendance{
+				UserID:         userID.(uuid.UUID),
+				CheckInTime:    &recordTime,
+				CheckInLat:     &record.Latitude,
+				CheckInLong:    &record.Longitude,
+				DeviceInfo:     record.DeviceInfo + " (offline)",
+				CheckInStatus:  checkInStatus,
+				IsMockLocation: record.IsMockLocation,
+				Notes:          "Synced from offline mode",
+			}
+
+			if err := h.attendanceRepo.Create(c.Request.Context(), attendance); err != nil {
+				errors = append(errors, "Failed to create check-in: "+err.Error())
+				continue
+			}
+			synced++
+
+		} else if record.Type == "check-out" {
+			// Find today's check-in record
+			existing, err := h.attendanceRepo.FindByUserAndDate(c.Request.Context(), userID.(uuid.UUID), recordDate)
+			if err != nil || existing == nil {
+				errors = append(errors, "No check-in found for "+recordDate)
+				continue
+			}
+			if existing.CheckOutTime != nil {
+				errors = append(errors, "Already checked out on "+recordDate)
+				continue
+			}
+
+			// Determine check-out status
+			checkOutSchedule := "17:00"
+			checkOutTolerance := 15
+			if user.Office != nil {
+				if user.Office.CheckOutTime != "" {
+					checkOutSchedule = user.Office.CheckOutTime
+				}
+				checkOutTolerance = user.Office.CheckOutTolerance
+			}
+			checkOutStatus := utils.DetermineCheckOutStatus(recordTime, checkOutSchedule, checkOutTolerance)
+
+			existing.CheckOutTime = &recordTime
+			existing.CheckOutLat = &record.Latitude
+			existing.CheckOutLong = &record.Longitude
+			existing.CheckOutStatus = checkOutStatus
+			existing.Notes = existing.Notes + " | Check-out synced from offline"
+
+			if err := h.attendanceRepo.Update(c.Request.Context(), existing); err != nil {
+				errors = append(errors, "Failed to update check-out: "+err.Error())
+				continue
+			}
+			synced++
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Sync completed",
+		"synced":  synced,
+		"errors":  errors,
+	})
+}
+

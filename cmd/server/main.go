@@ -91,6 +91,7 @@ func main() {
 		userRepo,
 		employeeRepo,
 		officeRepo,
+		wsHub,
 		cfg.Office.DefaultLat,
 		cfg.Office.DefaultLong,
 	)
@@ -104,7 +105,7 @@ func main() {
 	settingsRepo := repository.NewSettingsRepository(db)
 	settingsHandler := handlers.NewSettingsHandler(settingsRepo)
 	transferRepo := repository.NewTransferRequestRepository(db)
-	transferHandler := handlers.NewTransferRequestHandler(transferRepo, userRepo)
+	transferHandler := handlers.NewTransferRequestHandler(transferRepo, userRepo, wsHub)
 
 	// Office Management
 	officeHandler := handlers.NewOfficeHandler(officeRepo)
@@ -178,6 +179,9 @@ func main() {
 			kiosk.GET("/employees-for-registration", kioskHandler.GetEmployeesForRegistration)
 			kiosk.POST("/register-face", kioskHandler.RegisterFace)
 			kiosk.GET("/company-settings", kioskHandler.GetCompanySettings)
+			// Offline mode support
+			kiosk.GET("/sync-data", kioskHandler.SyncData)
+			kiosk.POST("/offline-sync", kioskHandler.OfflineSync)
 		}
 
 		// Protected routes
@@ -201,6 +205,7 @@ func main() {
 				attendance.POST("/check-out", attendanceHandler.CheckOut)
 				attendance.GET("/history", attendanceHandler.GetHistory)
 				attendance.GET("/today", attendanceHandler.GetTodayStatus)
+				attendance.POST("/offline-sync", attendanceHandler.OfflineSync)
 			}
 
 			// Transfer request routes (employee)
@@ -253,6 +258,7 @@ func main() {
 				// Employee routes
 				admin.GET("/employees", employeeHandler.GetAllEmployees)
 				admin.POST("/employees", employeeHandler.CreateEmployee)
+				admin.GET("/employees/positions", employeeHandler.GetPositions) // New route
 				admin.GET("/employees/:id", employeeHandler.GetEmployee)
 				admin.PUT("/employees/:id", employeeHandler.UpdateEmployee)
 				admin.DELETE("/employees/:id", employeeHandler.DeleteEmployee)

@@ -42,11 +42,15 @@ func (h *OfficeHandler) GetAllOffices(c *gin.Context) {
 // POST /api/admin/offices
 func (h *OfficeHandler) CreateOffice(c *gin.Context) {
 	var req struct {
-		Name      string  `json:"name" binding:"required"`
-		Address   string  `json:"address"`
-		Latitude  float64 `json:"latitude" binding:"required"`
-		Longitude float64 `json:"longitude" binding:"required"`
-		Radius    int     `json:"radius"`
+		Name              string  `json:"name" binding:"required"`
+		Address           string  `json:"address"`
+		Latitude          float64 `json:"latitude" binding:"required"`
+		Longitude         float64 `json:"longitude" binding:"required"`
+		Radius            int     `json:"radius"`
+		CheckInTime       string  `json:"check_in_time"`
+		CheckOutTime      string  `json:"check_out_time"`
+		CheckInTolerance  int     `json:"check_in_tolerance"`
+		CheckOutTolerance int     `json:"check_out_tolerance"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -57,14 +61,35 @@ func (h *OfficeHandler) CreateOffice(c *gin.Context) {
 	if req.Radius <= 0 {
 		req.Radius = 50
 	}
+	if req.CheckInTime == "" {
+		req.CheckInTime = "08:00"
+	}
+	if req.CheckOutTime == "" {
+		req.CheckOutTime = "17:00"
+	}
+	// Tolerances 0 is valid? No, usually default to something. But if 0 means strict? 
+	// Let's assume 0 input means default 30/15 if not specified. 
+	// Actually user might want 0 tolerance. But JSON unmarshal empty int is 0.
+	// Since we can't distinguish 0 from missing without pointer, let's assume if 0 use default. 
+	// Or maybe frontend always sends values. Let's use defaults if 0 for now.
+	if req.CheckInTolerance == 0 {
+		req.CheckInTolerance = 30
+	}
+	if req.CheckOutTolerance == 0 {
+		req.CheckOutTolerance = 15
+	}
 
 	office := &models.Office{
-		Name:      req.Name,
-		Address:   req.Address,
-		Latitude:  req.Latitude,
-		Longitude: req.Longitude,
-		Radius:    req.Radius,
-		IsActive:  true,
+		Name:              req.Name,
+		Address:           req.Address,
+		Latitude:          req.Latitude,
+		Longitude:         req.Longitude,
+		Radius:            req.Radius,
+		CheckInTime:       req.CheckInTime,
+		CheckOutTime:      req.CheckOutTime,
+		CheckInTolerance:  req.CheckInTolerance,
+		CheckOutTolerance: req.CheckOutTolerance,
+		IsActive:          true,
 	}
 
 	if err := h.officeRepo.Create(c.Request.Context(), office); err != nil {
@@ -86,12 +111,16 @@ func (h *OfficeHandler) UpdateOffice(c *gin.Context) {
 	}
 
 	var req struct {
-		Name      string  `json:"name"`
-		Address   string  `json:"address"`
-		Latitude  float64 `json:"latitude"`
-		Longitude float64 `json:"longitude"`
-		Radius    int     `json:"radius"`
-		IsActive  *bool   `json:"is_active"` // Pointer to handle false value
+		Name              string  `json:"name"`
+		Address           string  `json:"address"`
+		Latitude          float64 `json:"latitude"`
+		Longitude         float64 `json:"longitude"`
+		Radius            int     `json:"radius"`
+		CheckInTime       string  `json:"check_in_time"`
+		CheckOutTime      string  `json:"check_out_time"`
+		CheckInTolerance  *int    `json:"check_in_tolerance"`
+		CheckOutTolerance *int    `json:"check_out_tolerance"`
+		IsActive          *bool   `json:"is_active"` // Pointer to handle false value
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -119,6 +148,18 @@ func (h *OfficeHandler) UpdateOffice(c *gin.Context) {
 	}
 	if req.Radius > 0 {
 		office.Radius = req.Radius
+	}
+	if req.CheckInTime != "" {
+		office.CheckInTime = req.CheckInTime
+	}
+	if req.CheckOutTime != "" {
+		office.CheckOutTime = req.CheckOutTime
+	}
+	if req.CheckInTolerance != nil {
+		office.CheckInTolerance = *req.CheckInTolerance
+	}
+	if req.CheckOutTolerance != nil {
+		office.CheckOutTolerance = *req.CheckOutTolerance
 	}
 	if req.IsActive != nil {
 		office.IsActive = *req.IsActive

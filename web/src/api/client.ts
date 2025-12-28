@@ -1,11 +1,11 @@
 // API Client for Admin Dashboard
 import axios from 'axios';
 
-// In dev mode with Vite proxy, use '/api'. In production, use full backend URL.
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+// In dev mode, VITE_API_URL can be set. In production, use relative path (same domain).
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
-// Backend base URL for uploads and other resources
-export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
+// Backend base URL for uploads and other resources (empty = same domain)
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
 
 // Helper to get full URL for uploaded files
 export const getUploadUrl = (path: string | null | undefined): string | null => {
@@ -142,6 +142,7 @@ export const employeeAPI = {
             headers: { 'Content-Type': 'multipart/form-data' },
         });
     },
+    getPositions: () => apiClient.get<{ positions: string[] }>('/admin/employees/positions'), // New API
 };
 export interface Office {
     id: string;
@@ -151,6 +152,10 @@ export interface Office {
     longitude: number;
     radius: number;
     is_active: boolean;
+    check_in_time?: string;
+    check_out_time?: string;
+    check_in_tolerance?: number;
+    check_out_tolerance?: number;
 }
 
 export interface User {
@@ -176,9 +181,13 @@ export interface Attendance {
         id: string;
         name: string;
         employee_id: string;
+        position?: string;
+        office?: Office;
     };
     check_in_time: string | null;
     check_out_time: string | null;
+    check_in_status?: string;
+    check_out_status?: string;
     is_late: boolean;
     is_mock_location: boolean;
 }
@@ -199,6 +208,7 @@ export interface UpdateUserRequest {
     role?: 'employee' | 'admin' | 'hr';
     is_active?: boolean;
     office_id?: string;
+    face_verification_status?: string;
 }
 
 export interface ReportParams {
@@ -235,5 +245,50 @@ export interface UpdateKioskRequest {
     office_id: string;
     is_active?: boolean;
 }
+
+// Kiosk API (for kiosk mode operations)
+export const kioskAPI = {
+    // Existing endpoints
+    scan: (employeeId: string) =>
+        apiClient.post('/kiosk/scan', { employee_id: employeeId }),
+    verifyFace: (employeeId: string, faceEmbedding: number[]) =>
+        apiClient.post('/kiosk/verify-face', { employee_id: employeeId, face_embedding: faceEmbedding }),
+    checkIn: (employeeId: string, kioskId: string) =>
+        apiClient.post('/kiosk/check-in', { employee_id: employeeId, kiosk_id: kioskId }),
+    checkOut: (employeeId: string, kioskId: string) =>
+        apiClient.post('/kiosk/check-out', { employee_id: employeeId, kiosk_id: kioskId }),
+    getStatus: (employeeId: string) =>
+        apiClient.get(`/kiosk/status/${employeeId}`),
+
+    // Setup endpoints
+    adminUnlock: (adminCode: string) =>
+        apiClient.post('/kiosk/admin-unlock', { admin_code: adminCode }),
+    getAvailable: (code: string) =>
+        apiClient.get('/kiosk/available', { params: { code } }),
+    pair: (kioskId: string, adminCode: string) =>
+        apiClient.post('/kiosk/pair', { kiosk_id: kioskId, admin_code: adminCode }),
+    getSettings: () =>
+        apiClient.get('/kiosk/settings'),
+    getCompanySettings: () =>
+        apiClient.get('/kiosk/company-settings'),
+    getEmployeesForRegistration: (code: string) =>
+        apiClient.get('/kiosk/employees-for-registration', { params: { code } }),
+    registerFace: (formData: FormData) =>
+        apiClient.post('/kiosk/register-face', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        }),
+
+    // Offline mode endpoints
+    syncData: (kioskId: string, adminCode: string) =>
+        apiClient.get('/kiosk/sync-data', {
+            params: { kiosk_id: kioskId, code: adminCode }
+        }),
+    offlineSync: (kioskId: string, adminCode: string, records: any[]) =>
+        apiClient.post('/kiosk/offline-sync', {
+            kiosk_id: kioskId,
+            admin_code: adminCode,
+            records,
+        }),
+};
 
 export default apiClient;

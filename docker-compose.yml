@@ -59,6 +59,24 @@ services:
         condition: service_healthy
     restart: always
 
+  face_service:
+    build:
+      context: ./face_service
+      dockerfile: Dockerfile
+    container_name: attendance_face_service
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./uploads:/app/uploads:ro
+    environment:
+      - PORT=5001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: always
+
 volumes:
   postgres_data:
   redis_data:

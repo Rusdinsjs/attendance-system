@@ -79,18 +79,27 @@ export default function ReportsPage() {
         return new Date(time).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
     };
 
+    const getStatusBadge = (status?: string) => {
+        if (!status) return null;
+        if (status === 'Terlambat' || status === 'Cepat Pulang') {
+            return <div className="text-xs font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full inline-block mt-1 border border-amber-500/20">{status}</div>;
+        }
+        return <div className="text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full inline-block mt-1 border border-emerald-500/20">{status}</div>;
+    };
+
     const exportToCSV = () => {
         if (!attendances || attendances.length === 0) return;
 
-        const headers = ['Tanggal', 'Nama', 'Jabatan', 'Kantor', 'Check In', 'Check Out', 'Status'];
+        const headers = ['Tanggal', 'Nama', 'Jabatan', 'Kantor', 'Check In', 'Status Masuk', 'Check Out', 'Status Pulang'];
         const rows = attendances.map((a: any) => [
             formatDate(a.check_in_time),
             a.user?.name || a.user_name || '',
             a.user?.employee?.position || '-',
             a.user?.office?.name || '-',
             formatTime(a.check_in_time),
+            a.check_in_status || '-',
             formatTime(a.check_out_time),
-            a.is_late ? 'Terlambat' : 'Hadir',
+            a.check_out_status || '-',
         ]);
 
         const csv = [headers.join(','), ...rows.map((r: string[]) => r.join(','))].join('\n');
@@ -118,6 +127,14 @@ export default function ReportsPage() {
                     Export CSV
                 </button>
             </div>
+
+            {/* ... Filters & Summary kept same structure but skipped in replacement to focus on table change ... */}
+            {/* Actually better to replace just table parts to avoid missing parts */}
+            {/* Wait, replace_file_content needs contiguous block. I'll target the export function and render part if they are close. */}
+            {/* They are separated by Filters and Summary. I should split edits. */}
+
+            {/* Edit 1: exportToCSV and getStatusBadge */}
+
 
             {/* Filters */}
             <div className="bg-slate-900 rounded-xl p-6 shadow-lg border border-slate-800 mb-6 space-y-4">
@@ -233,7 +250,7 @@ export default function ReportsPage() {
                                         className="px-6 py-3 text-left font-medium cursor-pointer hover:text-white transition group select-none"
                                     >
                                         <div className="flex items-center gap-1">
-                                            Tanggal & Jam
+                                            Tanggal
                                             <SortIcon field="check_in_time" />
                                         </div>
                                     </th>
@@ -260,8 +277,8 @@ export default function ReportsPage() {
                                     >
                                         Kantor
                                     </th>
+                                    <th className="px-6 py-3 text-left font-medium">Check In</th>
                                     <th className="px-6 py-3 text-left font-medium">Check Out</th>
-                                    <th className="px-6 py-3 text-left font-medium">Status</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800">
@@ -270,7 +287,6 @@ export default function ReportsPage() {
                                         <tr key={a.id} className="hover:bg-slate-800/50 transition-colors text-sm">
                                             <td className="px-6 py-4 whitespace-nowrap text-slate-300">
                                                 <div>{formatDate(a.check_in_time)}</div>
-                                                <div className="text-xs text-slate-500">{formatTime(a.check_in_time)}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap font-medium text-white">
                                                 {a.user?.name || a.user_name || 'Unknown'}
@@ -282,14 +298,15 @@ export default function ReportsPage() {
                                                 {a.user?.office?.name || '-'}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-slate-400">
-                                                {formatTime(a.check_out_time)}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                {a.is_late ? (
-                                                    <span className="px-2 py-1 text-xs font-medium bg-amber-500/10 text-amber-500 rounded-full border border-amber-500/20">Terlambat</span>
-                                                ) : (
-                                                    <span className="px-2 py-1 text-xs font-medium bg-emerald-500/10 text-emerald-500 rounded-full border border-emerald-500/20">Tepat Waktu</span>
+                                                <div className="font-mono text-white">{formatTime(a.check_in_time)}</div>
+                                                {getStatusBadge(a.check_in_status)}
+                                                {a.is_late && !a.check_in_status && ( // Fallback for old records
+                                                    <div className="text-xs font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full inline-block mt-1 border border-amber-500/20">Terlambat</div>
                                                 )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-slate-400">
+                                                <div className="font-mono text-white">{formatTime(a.check_out_time)}</div>
+                                                {getStatusBadge(a.check_out_status)}
                                             </td>
                                         </tr>
                                     );

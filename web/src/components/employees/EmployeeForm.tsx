@@ -89,7 +89,7 @@ export default function EmployeeForm({ isOpen, onClose, onSuccess, employee, rea
                 adminAPI.getUsers()
             ]);
             setOffices(officesRes.data.offices || []);
-            setUsers(usersRes.data);
+            setUsers(usersRes.data.data || []);
         } catch (error) {
             console.error("Failed to fetch options", error);
         }

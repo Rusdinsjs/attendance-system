@@ -220,6 +220,55 @@ const OfficePage: React.FC = () => {
                                     onChange={e => setFormData({ ...formData, radius: parseInt(e.target.value) })}
                                 />
                             </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">Jam Masuk</label>
+                                    <input
+                                        type="time"
+                                        required
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-white placeholder-slate-600"
+                                        value={formData.check_in_time}
+                                        onChange={e => setFormData({ ...formData, check_in_time: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">Toleransi Masuk (mnt)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        required
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-white placeholder-slate-600"
+                                        value={formData.check_in_tolerance}
+                                        onChange={e => setFormData({ ...formData, check_in_tolerance: parseInt(e.target.value) })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">Jam Pulang</label>
+                                    <input
+                                        type="time"
+                                        required
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-white placeholder-slate-600"
+                                        value={formData.check_out_time}
+                                        onChange={e => setFormData({ ...formData, check_out_time: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">Toleransi Pulang (mnt)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        required
+                                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-white placeholder-slate-600"
+                                        value={formData.check_out_tolerance}
+                                        onChange={e => setFormData({ ...formData, check_out_tolerance: parseInt(e.target.value) })}
+                                    />
+                                </div>
+                            </div>
+
                             <div className="flex gap-3 mt-6 pt-4 border-t border-slate-800">
                                 <button
                                     type="button"
@@ -237,9 +286,9 @@ const OfficePage: React.FC = () => {
                             </div>
                         </form>
                     </div>
-                </div>
+                </div >
             )}
-        </div>
+        </div >
     );
 };
 

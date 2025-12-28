@@ -1,0 +1,53 @@
+# Docker Compose for Kiosk Offline Mode
+# This runs the face_service locally on the kiosk machine
+# 
+# Usage:
+#   1. Copy this file to the kiosk machine
+#   2. Run: docker-compose -f docker-compose.kiosk.yml up -d
+#   3. Configure the Kiosk web app to use http://localhost:5001 for face service
+
+services:
+  face_service:
+    build:
+      context: ./face_service
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+      # Run in offline mode - only extract embeddings, no server sync
+      - OFFLINE_MODE=true
+    volumes:
+      # Mount uploads folder for face photos
+      - ./uploads:/app/uploads:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+# Optional: Local PostgreSQL for caching (alternative to IndexedDB)
+# Uncomment if you prefer PostgreSQL over IndexedDB for employee cache
+#
+#   local_db:
+#     image: postgres:15-alpine
+#     ports:
+#       - "5433:5432"
+#     environment:
+#       - POSTGRES_DB=kiosk_cache
+#       - POSTGRES_USER=kiosk
+#       - POSTGRES_PASSWORD=kiosk_secret
+#     volumes:
+#       - kiosk_data:/var/lib/postgresql/data
+#     restart: unless-stopped
+#
+# volumes:
+#   kiosk_data:

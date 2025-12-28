@@ -4,11 +4,9 @@ description: How to build the Mobile App for Android/iOS
 
 # Building the Mobile Application
 
-Since this project uses native modules (like `expo-camera`, `expo-location`, and potentially `expo-face-detector` in the future), you cannot use the standard "Expo Go" app for advanced features indefinitely. You have two main options:
+Since this project uses native modules (like `expo-camera`, `expo-location`), you need to build a binary. You can use **EAS Cloud Build** (easiest, runs on Expo servers) or **Local Build** (faster if you have a powerful machine).
 
-## Option 1: Development Build (Recommended for Testing)
-A "Development Build" is like your own custom version of Expo Go that includes your native libraries.
-
+## Prerequisites
 1.  **Install EAS CLI**:
     ```bash
     npm install -g eas-cli
@@ -19,17 +17,31 @@ A "Development Build" is like your own custom version of Expo Go that includes y
     eas login
     ```
 
-3.  **Configure Build**:
+3.  **Configure Build** (One time only):
     ```bash
     eas build:configure
     ```
 
-4.  **Create Development Build (Android)**:
+## Option 1: EAS Cloud Build (Recommended for Ease)
+Builds run on Expo's servers. No need for Android Studio/Xcode locally.
+
+1.  **Build APK (Android)**:
     ```bash
-    eas build --profile development --platform android
+    eas build -p android --profile production
     ```
-    - This will generate an `.apk` that you can install on your emulator or device.
-    - Run the bundler with: `npx expo start --dev-client`
+    - Select "Yes" to generate new keystore if asked.
+    - Wait for the queue (free tier has wait times).
+    - Download link will be provided at the end.
+
+## Option 2: Local Build (Recommended for Speed)
+Builds run on your machine. Requires Android SDK/Java configured.
+
+1.  **Build APK Locally**:
+    ```bash
+    eas build -p android --profile production --local --output mobile-app.apk
+    ```
+    - Faster (no queue).
+    - Harder to setup (needs environment).
 
 ## Option 2: Production Build (For Release)
 This generates the final `.apk` or `.aab` for the Play Store.

@@ -491,3 +491,14 @@ func (h *EmployeeHandler) ImportEmployees(c *gin.Context) {
 		"errors":   errors,
 	})
 }
+
+// GetPositions returns a list of unique positions
+// GET /api/admin/employees/positions
+func (h *EmployeeHandler) GetPositions(c *gin.Context) {
+	positions, err := h.employeeRepo.GetUniquePositions(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch positions"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"positions": positions})
+}

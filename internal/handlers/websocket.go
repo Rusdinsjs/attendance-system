@@ -1,3 +1,4 @@
+// WebSocket Hub and Handler for realtime updates
 package handlers
 
 import (
@@ -12,60 +13,63 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		// Allow all origins in development
-		return true
-	},
-}
+// Event types
+const (
+	EventUserUpdated       = "user:updated"
+	EventAttendanceCheckIn = "attendance:checkin"
+	EventAttendanceCheckOut = "attendance:checkout"
+	EventSettingsUpdated   = "settings:updated"
+	EventFaceVerified      = "face:verified"
+)
 
-// WebSocketHub manages all WebSocket connections
-type WebSocketHub struct {
-	clients    map[*WebSocketClient]bool
-	broadcast  chan []byte
-	register   chan *WebSocketClient
-	unregister chan *WebSocketClient
-	mu         sync.RWMutex
-}
-
-// WebSocketClient represents a single WebSocket connection
-type WebSocketClient struct {
-	hub    *WebSocketHub
-	conn   *websocket.Conn
-	send   chan []byte
-	userID uuid.UUID
-	role   string
-}
-
-// AttendanceEvent represents a real-time attendance update
+// AttendanceEvent payload
 type AttendanceEvent struct {
-	Type       string    `json:"type"` // "check_in" or "check_out"
+	Type       string    `json:"type"`
 	UserID     uuid.UUID `json:"user_id"`
 	UserName   string    `json:"user_name"`
 	EmployeeID string    `json:"employee_id"`
 	Time       time.Time `json:"time"`
-	IsLate     bool      `json:"is_late,omitempty"`
+	IsLate     bool      `json:"is_late"`
 }
 
-// WebSocketMessage represents a message sent through WebSocket
+// WebSocketMessage represents a message to broadcast
 type WebSocketMessage struct {
-	Event string      `json:"event"`
-	Data  interface{} `json:"data"`
+	Event   string      `json:"event"`
+	Payload interface{} `json:"payload"`
 }
 
-// NewWebSocketHub creates a new WebSocket hub
+// Client represents a connected WebSocket client
+type Client struct {
+	hub      *WebSocketHub
+	conn     *websocket.Conn
+	send     chan []byte
+	userID   string  // Optional: authenticated user ID
+	clientType string // "admin", "kiosk", "mobile"
+}
+
+// WebSocketHub maintains active clients and broadcasts messages
+type WebSocketHub struct {
+	clients    map[*Client]bool
+	broadcast  chan []byte
+	register   chan *Client
+	unregister chan *Client
+	mu         sync.RWMutex
+}
+
+// Global hub instance
+var WSHub *WebSocketHub
+
+// NewWebSocketHub creates a new Hub
 func NewWebSocketHub() *WebSocketHub {
 	return &WebSocketHub{
-		clients:    make(map[*WebSocketClient]bool),
-		broadcast:  make(chan []byte, 256),
-		register:   make(chan *WebSocketClient),
-		unregister: make(chan *WebSocketClient),
+		clients:    make(map[*Client]bool),
+		broadcast:  make(chan []byte),
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
 	}
 }
 
-// Run starts the WebSocket hub
+// Run starts the hub's main loop
 func (h *WebSocketHub) Run() {
 	for {
 		select {
@@ -73,7 +77,7 @@ func (h *WebSocketHub) Run() {
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
-			log.Printf("WebSocket client connected. Total clients: %d", len(h.clients))
+			log.Printf("WebSocket client connected. Total: %d", len(h.clients))
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -82,7 +86,7 @@ func (h *WebSocketHub) Run() {
 				close(client.send)
 			}
 			h.mu.Unlock()
-			log.Printf("WebSocket client disconnected. Total clients: %d", len(h.clients))
+			log.Printf("WebSocket client disconnected. Total: %d", len(h.clients))
 
 		case message := <-h.broadcast:
 			h.mu.RLock()
@@ -99,139 +103,111 @@ func (h *WebSocketHub) Run() {
 	}
 }
 
-// BroadcastAttendanceUpdate broadcasts an attendance event to all connected clients
-func (h *WebSocketHub) BroadcastAttendanceUpdate(event AttendanceEvent) {
-	message := WebSocketMessage{
-		Event: "attendance_update",
-		Data:  event,
+// Broadcast sends a message to all connected clients
+func (h *WebSocketHub) Broadcast(event string, payload interface{}) {
+	msg := WebSocketMessage{
+		Event:   event,
+		Payload: payload,
 	}
-	
-	data, err := json.Marshal(message)
+	data, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("Failed to marshal attendance event: %v", err)
+		log.Printf("WebSocket marshal error: %v", err)
 		return
 	}
-	
 	h.broadcast <- data
 }
 
-// BroadcastMessage broadcasts a generic message to all connected clients
-func (h *WebSocketHub) BroadcastMessage(event string, data interface{}) {
-	message := WebSocketMessage{
-		Event: event,
-		Data:  data,
+// BroadcastAttendanceUpdate simplifies broadcasting attendance events
+// Matches the method signature called in attendance.go
+func (h *WebSocketHub) BroadcastAttendanceUpdate(event AttendanceEvent) {
+	// Wrap in standard message format using legacy/expected type "attendance_update"
+	// Dashboard expects "attendance_update"
+	msg := map[string]interface{}{
+		"type":    "attendance_update", // Dashboard listener expects this
+		"payload": event,
 	}
 	
-	msgData, err := json.Marshal(message)
+	data, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("Failed to marshal message: %v", err)
+		log.Printf("WebSocket marshal error: %v", err)
+		return
+	}
+	h.broadcast <- data
+}
+
+// BroadcastToType sends a message only to clients of a specific type
+func (h *WebSocketHub) BroadcastToType(clientType string, event string, payload interface{}) {
+	msg := WebSocketMessage{
+		Event:   event,
+		Payload: payload,
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("WebSocket marshal error: %v", err)
 		return
 	}
 	
-	h.broadcast <- msgData
-}
-
-// GetConnectedCount returns the number of connected clients
-func (h *WebSocketHub) GetConnectedCount() int {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return len(h.clients)
-}
-
-// HandleWebSocket handles WebSocket connection upgrade
-// GET /ws/dashboard
-func (h *WebSocketHub) HandleWebSocket(c *gin.Context) {
-	// Upgrade HTTP to WebSocket
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		log.Printf("Failed to upgrade connection: %v", err)
-		return
-	}
-
-	// Get user info from context (if authenticated)
-	userID, _ := c.Get("user_id")
-	role, _ := c.Get("role")
-
-	var uid uuid.UUID
-	var roleStr string
-	if userID != nil {
-		uid = userID.(uuid.UUID)
-	}
-	if role != nil {
-		roleStr = role.(string)
-	}
-
-	client := &WebSocketClient{
-		hub:    h,
-		conn:   conn,
-		send:   make(chan []byte, 256),
-		userID: uid,
-		role:   roleStr,
-	}
-
-	h.register <- client
-
-	// Start goroutines for reading and writing
-	go client.writePump()
-	go client.readPump()
-}
-
-// writePump sends messages from hub to client
-func (c *WebSocketClient) writePump() {
-	ticker := time.NewTicker(30 * time.Second)
-	defer func() {
-		ticker.Stop()
-		c.conn.Close()
-	}()
-
-	for {
-		select {
-		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
-
-			w, err := c.conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				return
-			}
-			w.Write(message)
-
-			// Add queued messages to current websocket message
-			n := len(c.send)
-			for i := 0; i < n; i++ {
-				w.Write([]byte{'\n'})
-				w.Write(<-c.send)
-			}
-
-			if err := w.Close(); err != nil {
-				return
-			}
-
-		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
+	for client := range h.clients {
+		if client.clientType == clientType {
+			select {
+			case client.send <- data:
+			default:
 			}
 		}
 	}
+	h.mu.RUnlock()
+}
+// GetConnectedCount returns number of connected clients
+func (h *WebSocketHub) GetConnectedCount() int {
+    h.mu.RLock()
+    defer h.mu.RUnlock()
+    return len(h.clients)
 }
 
-// readPump reads messages from client
-func (c *WebSocketClient) readPump() {
+// WebSocket upgrader
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins in development
+	},
+}
+
+// HandleWebSocket handles WebSocket connections
+// Renamed from WebSocketHandler to match main.go usage: wsHub.HandleWebSocket
+func (h *WebSocketHub) HandleWebSocket(c *gin.Context) {
+		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			log.Printf("WebSocket upgrade error: %v", err)
+			return
+		}
+
+		clientType := c.Query("type") // "admin", "kiosk", "mobile"
+		if clientType == "" {
+			clientType = "unknown"
+		}
+
+		client := &Client{
+			hub:        h,
+			conn:       conn,
+			send:       make(chan []byte, 256),
+			clientType: clientType,
+		}
+
+		h.register <- client
+
+		// Start goroutines for reading and writing
+		go client.writePump()
+		go client.readPump()
+}
+
+// readPump reads messages from the WebSocket connection
+func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
-
-	c.conn.SetReadLimit(512)
-	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		return nil
-	})
 
 	for {
 		_, _, err := c.conn.ReadMessage()
@@ -241,5 +217,26 @@ func (c *WebSocketClient) readPump() {
 			}
 			break
 		}
+		// For now, we only broadcast from server, ignore client messages
 	}
+}
+
+// writePump writes messages to the WebSocket connection
+func (c *Client) writePump() {
+	defer c.conn.Close()
+
+	for message := range c.send {
+		err := c.conn.WriteMessage(websocket.TextMessage, message)
+		if err != nil {
+			log.Printf("WebSocket write error: %v", err)
+			return
+		}
+	}
+}
+
+// InitWebSocket initializes the global WebSocket hub
+func InitWebSocket() *WebSocketHub {
+	WSHub = NewWebSocketHub()
+	go WSHub.Run()
+	return WSHub
 }

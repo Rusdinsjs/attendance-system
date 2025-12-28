@@ -206,6 +206,13 @@ func (r *EmployeeRepository) FindByNIK(ctx context.Context, nik string) (*models
 	return &employee, nil
 }
 
+// GetUniquePositions returns a list of distinct job positions
+func (r *EmployeeRepository) GetUniquePositions(ctx context.Context) ([]string, error) {
+	var positions []string
+	err := r.db.WithContext(ctx).Model(&models.Employee{}).Distinct("position").Pluck("position", &positions).Error
+	return positions, err
+}
+
 // Delete permanently deletes an employee
 func (r *EmployeeRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return r.db.WithContext(ctx).Select(clause.Associations).Delete(&models.Employee{ID: id}).Error
