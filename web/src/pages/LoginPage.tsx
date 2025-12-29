@@ -171,6 +171,21 @@ export default function LoginPage() {
                                 </>
                             )}
                         </button>
+
+                        <div className="relative flex items-center gap-4 py-2">
+                            <div className="flex-grow h-px bg-slate-800"></div>
+                            <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Atau</span>
+                            <div className="flex-grow h-px bg-slate-800"></div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => navigate('/kiosk')}
+                            className="w-full py-3 bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-all border border-slate-700 hover:border-slate-600 active:scale-[0.98]"
+                        >
+                            <Building2 size={18} />
+                            Buka Mode Kiosk
+                        </button>
                     </form>
 
                     <p className="text-center text-xs text-slate-500 mt-8 font-light">

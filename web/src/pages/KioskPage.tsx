@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import Webcam from 'react-webcam';
+import { useNavigate } from 'react-router-dom';
 import {
     Clock, MapPin, Scan, CheckCircle2, XCircle,
     Settings, ShieldCheck, ChevronRight, RefreshCw, LogIn, LogOut, UserPlus, Camera,
-    Wifi, WifiOff
+    Wifi, WifiOff, AlertCircle
 } from 'lucide-react';
 import { useKioskOffline } from '../hooks/useKioskOffline';
 
@@ -33,6 +34,7 @@ interface Kiosk {
 }
 
 const KioskPage: React.FC = () => {
+    const navigate = useNavigate();
     // Kiosk State
     const [step, setStep] = useState<'scan' | 'verify' | 'success' | 'error'>('scan');
     const [employee, setEmployee] = useState<Employee | null>(null);
@@ -65,7 +67,7 @@ const KioskPage: React.FC = () => {
     const [, setIdleTime] = useState(0);
 
     const webcamRef = useRef<Webcam>(null);
-    const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+    const scannerRef = useRef<Html5Qrcode | null>(null);
 
     // Company Settings
     const [companySettings, setCompanySettings] = useState({
@@ -159,101 +161,7 @@ const KioskPage: React.FC = () => {
         return () => clearInterval(timer);
     }, []);
 
-    // Initialize QR Scanner
-    useEffect(() => {
-        if (step === 'scan' && !showSetup && !cameraError) {
-            // Check permissions first
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then(() => setCameraError(false))
-                .catch(() => setCameraError(true));
-
-            if (scannerRef.current) return;
-
-            try {
-                const scanner = new Html5QrcodeScanner(
-                    "qr-reader",
-                    { fps: 10, qrbox: { width: 250, height: 250 } },
-                    false
-                );
-
-                scanner.render(
-                    (decodedText) => handleQRScan(decodedText),
-                    (error) => {
-                        if (error.toString().includes('getUserMedia') || error.toString().includes('NotAllowedError')) {
-                            setCameraError(true);
-                            scanner.clear().catch(console.error);
-                        }
-                    }
-                );
-                scannerRef.current = scanner;
-            } catch (err) {
-                setCameraError(true);
-            }
-        }
-
-        return () => {
-            if (scannerRef.current && step !== 'scan') {
-                scannerRef.current.clear().catch(console.error);
-                scannerRef.current = null;
-            }
-        };
-    }, [step, cameraError]);
-
-    // Idle/Screensaver logic
-    useEffect(() => {
-        if (step !== 'scan' || showSetup) {
-            setIdleTime(0);
-            setIsScreensaverActive(false);
-            return;
-        }
-
-        const interval = setInterval(() => {
-            setIdleTime(prev => {
-                if (prev + 1 >= companySettings.screensaverTimeout) {
-                    setIsScreensaverActive(true);
-                    return prev + 1;
-                }
-                return prev + 1;
-            });
-        }, 1000);
-
-        const resetIdle = () => {
-            setIdleTime(0);
-            setIsScreensaverActive(false);
-        };
-
-        window.addEventListener('mousemove', resetIdle);
-        window.addEventListener('mousedown', resetIdle);
-        window.addEventListener('keypress', resetIdle);
-        window.addEventListener('touchstart', resetIdle);
-
-        return () => {
-            clearInterval(interval);
-            window.removeEventListener('mousemove', resetIdle);
-            window.removeEventListener('mousedown', resetIdle);
-            window.removeEventListener('keypress', resetIdle);
-            window.removeEventListener('touchstart', resetIdle);
-        };
-    }, [step, showSetup, companySettings.screensaverTimeout]);
-
-    // Auto reset
-    useEffect(() => {
-        if (step === 'success' || step === 'error') {
-            const countdown = setInterval(() => {
-                setAutoResetTimer((prev) => {
-                    if (prev <= 1) {
-                        clearInterval(countdown);
-                        resetKiosk();
-                        return 5;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
-            return () => clearInterval(countdown);
-        }
-    }, [step]);
-
-    const handleQRScan = async (employeeId: string) => {
+    const handleQRScan = useCallback(async (employeeId: string) => {
         if (isProcessing) return;
         setIsProcessing(true);
 
@@ -352,7 +260,109 @@ const KioskPage: React.FC = () => {
         } finally {
             setIsProcessing(false);
         }
-    };
+    }, [isProcessing, isOnline, isOfflineReady, lookupEmployee]);
+
+    // Initialize QR Scanner
+    useEffect(() => {
+        if (step === 'scan' && !showSetup && !cameraError) {
+            // Check permissions first
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(() => setCameraError(false))
+                .catch(() => setCameraError(true));
+
+            if (scannerRef.current) return;
+
+            const scanner = new Html5Qrcode("qr-reader");
+            scannerRef.current = scanner;
+
+            scanner.start(
+                { facingMode: "user" },
+                {
+                    fps: 10,
+                    qrbox: { width: 300, height: 300 },
+                    aspectRatio: 1.0
+                },
+                (decodedText) => {
+                    handleQRScan(decodedText);
+                },
+                (_) => {
+                    // Ignore per-frame errors
+                }
+            ).catch((err) => {
+                console.error("Error starting scanner", err);
+                setCameraError(true);
+            });
+        }
+
+        return () => {
+            if (scannerRef.current) {
+                // Determine if it's running before stopping to avoid errors
+                // However Html5Qrcode doesn't expose isRunning easily, so we try catch stop
+                scannerRef.current.stop().then(() => {
+                    scannerRef.current?.clear();
+                }).catch((err: any) => {
+                    console.log("Failed to stop scanner", err);
+                });
+                scannerRef.current = null;
+            }
+        };
+    }, [step, showSetup, cameraError, handleQRScan]);
+
+    // Idle/Screensaver logic
+    useEffect(() => {
+        if (step !== 'scan' || showSetup) {
+            setIdleTime(0);
+            setIsScreensaverActive(false);
+            return;
+        }
+
+        const interval = setInterval(() => {
+            setIdleTime(prev => {
+                if (prev + 1 >= companySettings.screensaverTimeout) {
+                    setIsScreensaverActive(true);
+                    return prev + 1;
+                }
+                return prev + 1;
+            });
+        }, 1000);
+
+        const resetIdle = () => {
+            setIdleTime(0);
+            setIsScreensaverActive(false);
+        };
+
+        window.addEventListener('mousemove', resetIdle);
+        window.addEventListener('mousedown', resetIdle);
+        window.addEventListener('keypress', resetIdle);
+        window.addEventListener('touchstart', resetIdle);
+
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('mousemove', resetIdle);
+            window.removeEventListener('mousedown', resetIdle);
+            window.removeEventListener('keypress', resetIdle);
+            window.removeEventListener('touchstart', resetIdle);
+        };
+    }, [step, showSetup, companySettings.screensaverTimeout]);
+
+    // Auto reset
+    useEffect(() => {
+        if (step === 'success' || step === 'error') {
+            const countdown = setInterval(() => {
+                setAutoResetTimer((prev) => {
+                    if (prev <= 1) {
+                        clearInterval(countdown);
+                        resetKiosk();
+                        return 5;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+            return () => clearInterval(countdown);
+        }
+    }, [step]);
+
+
 
     const handleManualSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -392,6 +402,8 @@ const KioskPage: React.FC = () => {
                 if (!data) data = [];
                 setAvailableKiosks(data);
                 setSetupStep(2); // Move to Kiosk Selection
+            } else if (setupMode === 'menu') {
+                // Just unlocking settings/setup menu is handled by showSetup state, but here we might be checking PIN for specific actions
             }
         } catch (error) {
             console.error(error);
@@ -589,7 +601,7 @@ const KioskPage: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-900 bg-gradient-to-b from-slate-900 via-slate-950 to-black text-white overflow-hidden relative font-sans selection:bg-cyan-500/30">
+        <div className="min-h-screen bg-slate-900 bg-gradient-to-b from-slate-900 via-slate-950 to-black text-white overflow-y-auto relative font-sans selection:bg-cyan-500/30">
             {/* Background Effects */}
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
                 <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-cyan-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDuration: '4s' }} />
@@ -644,51 +656,75 @@ const KioskPage: React.FC = () => {
             </div>
 
             {/* Main Content Card */}
-            <div className="relative z-10 flex-1 flex items-center justify-center p-6">
+            <div className="relative z-10 flex-1 flex items-center justify-center p-6 pb-32">
                 <div className="w-full max-w-lg">
 
                     {step === 'scan' && (
                         <div className="glass-card bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl p-8 shadow-2xl animate-in fade-in zoom-in duration-300">
                             <div className="text-center mb-8">
                                 <h2 className="text-2xl font-semibold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400">
-                                    {cameraError ? 'Mode Manual' : 'Scan QR Code'}
+                                    Scan QR Code
                                 </h2>
                                 <p className="text-slate-400 text-sm">
-                                    {cameraError ? 'Kamera tidak tersedia, gunakan ID manual' : 'Arahkan kode QR karyawan ke kamera'}
+                                    Arahkan kode QR karyawan ke kamera
                                 </p>
                             </div>
 
                             {!cameraError && (
-                                <div className="relative w-64 h-64 mx-auto mb-8 rounded-2xl overflow-hidden border-2 border-slate-700 bg-black/50 shadow-inner group">
-                                    <div id="qr-reader" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                                <div className="relative w-full max-w-sm aspect-square mx-auto mb-8 rounded-2xl overflow-hidden border-2 border-slate-700 bg-black/50 shadow-inner group">
+                                    <div id="qr-reader" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity [&>video]:w-full [&>video]:h-full [&>video]:object-cover" />
 
                                     {/* Scanning Animation Overlay */}
+                                    {/* Scanning Animation Overlay */}
                                     <div className="absolute inset-0 pointer-events-none">
-                                        <div className="absolute top-0 left-0 w-full h-[2px] bg-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.8)] animate-[scan_2s_ease-in-out_infinite]" />
-                                        <div className="absolute inset-0 border-[30px] border-slate-900/60" /> {/* Vignette */}
-                                        <Scan className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white/20 w-16 h-16" />
+                                        <div className="absolute top-0 left-0 w-full h-[2px] bg-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.8)] animate-[scan_2s_ease-in-out_infinite] z-10" />
+
+                                        {/* Corner Brackets */}
+                                        <div className="absolute top-6 left-6 w-12 h-12 border-t-[4px] border-l-[4px] border-cyan-400 rounded-tl-2xl shadow-[0_0_15px_rgba(34,211,238,0.5)]" />
+                                        <div className="absolute top-6 right-6 w-12 h-12 border-t-[4px] border-r-[4px] border-cyan-400 rounded-tr-2xl shadow-[0_0_15px_rgba(34,211,238,0.5)]" />
+                                        <div className="absolute bottom-6 left-6 w-12 h-12 border-b-[4px] border-l-[4px] border-cyan-400 rounded-bl-2xl shadow-[0_0_15px_rgba(34,211,238,0.5)]" />
+                                        <div className="absolute bottom-6 right-6 w-12 h-12 border-b-[4px] border-r-[4px] border-cyan-400 rounded-br-2xl shadow-[0_0_15px_rgba(34,211,238,0.5)]" />
+
+                                        {/* Subtle Vignette (Optional, weighted to edges essentially invisible in center) */}
+                                        <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_60%,rgba(0,0,0,0.6)_100%)]" />
                                     </div>
                                 </div>
                             )}
 
-                            <form onSubmit={handleManualSubmit} className="relative">
-                                <input
-                                    type="text"
-                                    value={manualId}
-                                    onChange={(e) => setManualId(e.target.value.toUpperCase())}
-                                    placeholder={cameraError ? "Masukkan ID Karyawan" : "Atau ketik ID Karyawan..."}
-                                    className="w-full bg-slate-900/50 border border-slate-700 text-white placeholder-slate-500 rounded-xl px-4 py-3.5 pl-11 outline-none focus:ring-2 focus:ring-cyan-500/50 transition font-mono tracking-wider text-center uppercase"
-                                    autoFocus={cameraError}
-                                />
-                                <RefreshCw className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 ${isProcessing ? 'animate-spin text-cyan-400' : 'text-slate-500'}`} />
-                                <button
-                                    type="submit"
-                                    disabled={!manualId.trim() || isProcessing}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-cyan-500/20 hover:bg-cyan-500 text-cyan-400 hover:text-white rounded-lg transition disabled:opacity-0 disabled:pointer-events-none"
-                                >
-                                    <ChevronRight size={18} />
-                                </button>
-                            </form>
+                            {/* Manual Input (Polished) */}
+                            <div className="mt-8 pt-6 border-t border-white/5 animate-in slide-in-from-bottom-4 duration-700 delay-150">
+                                <div className="flex flex-col gap-3">
+                                    <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest pl-1">
+                                        <div className="w-8 h-[1px] bg-slate-700"></div>
+                                        <span>Atau Input Manual</span>
+                                        <div className="w-full h-[1px] bg-slate-700"></div>
+                                    </div>
+
+                                    <form onSubmit={handleManualSubmit} className="relative group">
+                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-cyan-400 transition-colors duration-300 pointer-events-none">
+                                            <Settings size={20} className="opacity-0 w-0 h-0" /> {/* Hack to avoid unused import error if I remove User/Hash, wait I can reuse Settings or just import User if needed. Actually let's use existing imports. UserPlus is imported. Let's use Scan or just text. Let's import 'Hash' or 'User' if possible? Assuming User is not imported, let's check imports. UserPlus is there. */}
+                                            <span className="font-mono text-lg font-bold">#</span>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={manualId}
+                                            onChange={(e) => setManualId(e.target.value)}
+                                            placeholder="KETIK NIK / ID..."
+                                            className="w-full bg-slate-900/50 border-2 border-slate-700 group-focus-within:border-cyan-500/50 group-focus-within:bg-slate-900/80 rounded-2xl pl-12 pr-14 py-4 text-white placeholder-slate-600 focus:outline-none transition-all duration-300 font-mono text-lg tracking-widest uppercase shadow-inner"
+                                        />
+                                        <button
+                                            type="submit"
+                                            disabled={!manualId.trim() || isProcessing}
+                                            className="absolute right-2 top-2 bottom-2 aspect-square bg-cyan-500 hover:bg-cyan-400 text-slate-900 rounded-xl disabled:opacity-0 disabled:scale-75 transition-all duration-300 flex items-center justify-center font-bold shadow-lg shadow-cyan-500/20 active:scale-95 transform"
+                                        >
+                                            <ChevronRight size={24} strokeWidth={3} />
+                                        </button>
+                                    </form>
+                                    <p className="text-[10px] text-center text-slate-600">
+                                        Pastikan ID sesuai dengan data terdaftar
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     )}
 
@@ -704,23 +740,35 @@ const KioskPage: React.FC = () => {
                                 </p>
                             </div>
 
-                            <div className="relative w-64 h-64 mx-auto mb-8">
-                                <div className="absolute inset-0 rounded-full border-4 border-cyan-500/30 p-1">
-                                    <div className="w-full h-full rounded-full overflow-hidden relative bg-black">
-                                        <Webcam
-                                            ref={webcamRef}
-                                            audio={false}
-                                            screenshotFormat="image/jpeg"
-                                            className="w-full h-full object-cover transform scale-x-[-1]"
-                                        />
-                                        {/* Face Guide Overlay */}
-                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                            <div className="w-40 h-52 border-2 border-dashed border-cyan-400/50 rounded-[40%] opacity-50 scanner-guide-animation" />
-                                        </div>
+                            <div className="relative w-full max-w-sm aspect-square mx-auto mb-8 rounded-2xl overflow-hidden border-2 border-slate-700 bg-black/50 shadow-2xl shadow-cyan-900/20 group">
+                                <Webcam
+                                    ref={webcamRef}
+                                    audio={false}
+                                    screenshotFormat="image/jpeg"
+                                    className="w-full h-full object-cover transform scale-x-[-1] opacity-90 group-hover:opacity-100 transition-opacity"
+                                />
+
+                                {/* Overlay Elements */}
+                                <div className="absolute inset-0 pointer-events-none">
+                                    {/* Scanning Line - Faster animation for verification */}
+                                    <div className="absolute top-0 left-0 w-full h-[2px] bg-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.8)] animate-[scan_1.5s_ease-in-out_infinite] z-20" />
+
+                                    {/* Premium Corner Brackets */}
+                                    <div className="absolute top-4 left-4 w-12 h-12 border-t-[4px] border-l-[4px] border-cyan-500 rounded-tl-xl shadow-lg shadow-cyan-500/30" />
+                                    <div className="absolute top-4 right-4 w-12 h-12 border-t-[4px] border-r-[4px] border-cyan-500 rounded-tr-xl shadow-lg shadow-cyan-500/30" />
+                                    <div className="absolute bottom-4 left-4 w-12 h-12 border-b-[4px] border-l-[4px] border-cyan-500 rounded-bl-xl shadow-lg shadow-cyan-500/30" />
+                                    <div className="absolute bottom-4 right-4 w-12 h-12 border-b-[4px] border-r-[4px] border-cyan-500 rounded-br-xl shadow-lg shadow-cyan-500/30" />
+
+                                    {/* Inner Subtle Frame */}
+                                    <div className="absolute inset-8 border border-white/10 rounded-xl" />
+
+                                    {/* Status Text Overlay */}
+                                    <div className="absolute bottom-6 left-0 right-0 text-center">
+                                        <span className="inline-block px-3 py-1 bg-black/60 backdrop-blur-md rounded-full text-cyan-400 text-xs font-mono tracking-widest border border-cyan-500/30 animate-pulse">
+                                            MENDETEKSI WAJAH...
+                                        </span>
                                     </div>
                                 </div>
-                                {/* Pulse Effect */}
-                                <div className="absolute -inset-4 bg-cyan-500/20 rounded-full blur-xl animate-pulse -z-10" />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -734,7 +782,7 @@ const KioskPage: React.FC = () => {
                                     onClick={captureAndVerify}
                                     disabled={isProcessing}
                                     className={`px-6 py-4 rounded-xl font-bold text-white shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2
-                                        ${employee.today_status === 'checked_in'
+                                            ${employee.today_status === 'checked_in'
                                             ? 'bg-gradient-to-r from-amber-500 to-orange-600 shadow-amber-500/25 hover:shadow-amber-500/40'
                                             : 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-emerald-500/25 hover:shadow-emerald-500/40'
                                         }`}
@@ -1102,59 +1150,166 @@ const KioskPage: React.FC = () => {
                 </div>
             )}
 
-            {/* Screensaver Overlay */}
-            {
-                isScreensaverActive && (
-                    <div
-                        className="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center cursor-pointer animate-in fade-in duration-500"
-                        onClick={() => {
-                            setIsScreensaverActive(false);
-                            setIdleTime(0);
-                        }}
-                    >
-                        <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/5 to-blue-600/5 animate-pulse" />
+            {/* Prerequisites Modal (Blocking) */}
+            {(!kioskId || cameraError) && !showSetup && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-in fade-in duration-500">
+                    <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-8 shadow-2xl relative overflow-hidden text-center">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-amber-500" />
 
-                        {/* Floating Orbs */}
-                        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-cyan-500/10 rounded-full blur-[100px] animate-blob" />
-                        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-blue-600/10 rounded-full blur-[100px] animate-blob animation-delay-2000" />
+                        <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-black/50 border border-slate-700">
+                            <ShieldCheck size={40} className="text-amber-400" />
+                        </div>
 
-                        <div className="relative z-10 text-center space-y-10">
-                            <div className="flex flex-col items-center gap-8">
-                                <div className="p-8 bg-white/5 backdrop-blur-3xl rounded-[3rem] border border-white/10 shadow-2xl shadow-cyan-500/20 animate-pulse" style={{ animationDuration: '4s' }}>
-                                    {companySettings.logo ? (
-                                        <img src={companySettings.logo} alt="Logo" className="w-32 h-32 object-contain drop-shadow-2xl" />
-                                    ) : (
-                                        <Clock size={80} className="text-slate-400" />
-                                    )}
-                                </div>
-                                <div className="space-y-4">
-                                    <h1 className="text-8xl font-thin tracking-tighter text-white font-mono bg-clip-text text-transparent bg-gradient-to-b from-white to-slate-500">
-                                        {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                                    </h1>
-                                    <div className="space-y-1">
-                                        <h2 className="text-2xl text-cyan-400 font-bold tracking-[0.2em] uppercase">
-                                            {companySettings.name}
-                                        </h2>
-                                        <p className="text-sm text-slate-500 font-medium tracking-widest uppercase">
-                                            {companySettings.address}
-                                        </p>
+                        <h2 className="text-2xl font-bold text-white mb-2">Konfigurasi Diperlukan</h2>
+                        <p className="text-slate-400 text-sm mb-8">
+                            Perangkat ini harus memenuhi persyaratan berikut untuk beroperasi sebagai Kiosk.
+                        </p>
+
+                        <div className="space-y-4 mb-8">
+                            {/* Camera Check */}
+                            <div className="flex items-center justify-between p-4 rounded-xl bg-slate-800/50 border border-slate-700">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-lg ${!cameraError ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                                        <Camera size={20} />
                                     </div>
+                                    <span className="text-slate-200 font-medium">Kamera</span>
                                 </div>
+                                {!cameraError ? (
+                                    <div className="flex items-center gap-2 text-emerald-400 text-sm font-bold">
+                                        <CheckCircle2 size={16} />
+                                        <span>Aktif</span>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 text-red-400 text-sm font-bold">
+                                        <XCircle size={16} />
+                                        <span>Tidak Tersedia</span>
+                                    </div>
+                                )}
                             </div>
 
-                            <div className="animate-bounce">
-                                <div className="inline-flex items-center gap-3 px-6 py-3 rounded-full bg-white/5 border border-white/10 text-slate-400 text-sm tracking-[0.2em] hover:bg-white/10 transition">
-                                    <span className="relative flex h-2 w-2">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-                                    </span>
-                                    SENTUH LAYAR UNTUK MEMULAI
+                            {/* Pairing Check */}
+                            <div className="flex items-center justify-between p-4 rounded-xl bg-slate-800/50 border border-slate-700">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-lg ${kioskId ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                                        <Settings size={20} />
+                                    </div>
+                                    <span className="text-slate-200 font-medium">Pairing Device</span>
+                                </div>
+                                {kioskId ? (
+                                    <div className="flex items-center gap-2 text-emerald-400 text-sm font-bold">
+                                        <CheckCircle2 size={16} />
+                                        <span>Terhubung</span>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 text-amber-400 text-sm font-bold">
+                                        <AlertCircle size={16} />
+                                        <span>Belum Setup</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="space-y-3">
+                            {cameraError ? (
+                                <button
+                                    onClick={() => {
+                                        const retries = parseInt(sessionStorage.getItem('kiosk_camera_retries') || '0');
+                                        if (retries >= 2) { // 3rd attempt (img 0, 1, 2)
+                                            sessionStorage.removeItem('kiosk_camera_retries');
+                                            navigate('/login'); // Force full nav
+                                            return;
+                                        }
+                                        sessionStorage.setItem('kiosk_camera_retries', (retries + 1).toString());
+                                        window.location.reload();
+                                    }}
+                                    className="w-full py-3.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition shadow-lg shadow-red-900/20 active:scale-95 flex items-center justify-center gap-2"
+                                >
+                                    <RefreshCw size={18} />
+                                    Coba Akses Kamera ({3 - parseInt(sessionStorage.getItem('kiosk_camera_retries') || '0')}x lagi)
+                                </button>
+                            ) : !kioskId ? (
+                                <button
+                                    onClick={() => {
+                                        setSetupMode('pair'); // Direct to Pair mode if not paired
+                                        setShowSetup(true);
+                                    }}
+                                    className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-xl transition shadow-lg shadow-amber-900/20 active:scale-95 flex items-center justify-center gap-2"
+                                >
+                                    <Settings size={18} />
+                                    Mulai Setup Kiosk
+                                </button>
+                            ) : null}
+
+                            <button
+                                onClick={() => navigate('/login')}
+                                className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition flex items-center justify-center gap-2 font-medium"
+                            >
+                                <LogOut size={16} />
+                                Kembali ke Login
+                            </button>
+
+                            {cameraError && (
+                                <p className="text-xs text-slate-500 mt-4">
+                                    Gagal 3x akan dialihkan ke Login. Pastikan izin kamera aktif.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Screensaver Overlay */}
+            {isScreensaverActive && (
+                <div
+                    className="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center cursor-pointer animate-in fade-in duration-500"
+                    onClick={() => {
+                        setIsScreensaverActive(false);
+                        setIdleTime(0);
+                    }}
+                >
+                    <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/5 to-blue-600/5 animate-pulse" />
+
+                    {/* Floating Orbs */}
+                    <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-cyan-500/10 rounded-full blur-[100px] animate-blob" />
+                    <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-blue-600/10 rounded-full blur-[100px] animate-blob animation-delay-2000" />
+
+                    <div className="relative z-10 text-center space-y-10">
+                        <div className="flex flex-col items-center gap-8">
+                            <div className="p-8 bg-white/5 backdrop-blur-3xl rounded-[3rem] border border-white/10 shadow-2xl shadow-cyan-500/20 animate-pulse" style={{ animationDuration: '4s' }}>
+                                {companySettings.logo ? (
+                                    <img src={companySettings.logo} alt="Logo" className="w-32 h-32 object-contain drop-shadow-2xl" />
+                                ) : (
+                                    <Clock size={80} className="text-slate-400" />
+                                )}
+                            </div>
+                            <div className="space-y-4">
+                                <h1 className="text-8xl font-thin tracking-tighter text-white font-mono bg-clip-text text-transparent bg-gradient-to-b from-white to-slate-500">
+                                    {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                                </h1>
+                                <div className="space-y-1">
+                                    <h2 className="text-2xl text-cyan-400 font-bold tracking-[0.2em] uppercase">
+                                        {companySettings.name}
+                                    </h2>
+                                    <p className="text-sm text-slate-500 font-medium tracking-widest uppercase">
+                                        {companySettings.address}
+                                    </p>
                                 </div>
                             </div>
                         </div>
+
+                        <div className="animate-bounce">
+                            <div className="inline-flex items-center gap-3 px-6 py-3 rounded-full bg-white/5 border border-white/10 text-slate-400 text-sm tracking-[0.2em] hover:bg-white/10 transition">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+                                </span>
+                                SENTUH LAYAR UNTUK MEMULAI
+                            </div>
+                        </div>
                     </div>
-                )
-            }
+                </div>
+            )}
         </div>
     );
 };
