@@ -6,7 +6,7 @@ import { adminAPI, BACKEND_URL } from '../../api/client';
 import type { Attendance } from '../../api/client';
 import {
     Users, Clock, AlertTriangle, CheckCircle, Calendar,
-    BarChart2, TrendingUp, Activity
+    BarChart2, TrendingUp, Activity, LogOut
 } from 'lucide-react';
 import {
     BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis,
@@ -74,6 +74,7 @@ export default function DashboardView() {
         late: 0,
         absent: 0,
         total_checkins: 0,
+        early_leave: 0,
     };
     const graphData = statsData?.graph_data || [];
 
@@ -212,10 +213,11 @@ export default function DashboardView() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                 <StatCard icon={Users} label="Total Karyawan" value={stats.total_employees} color="text-slate-200" bgColor="bg-slate-800" />
                 <StatCard icon={CheckCircle} label={period === 'custom' ? "Total Hadir (Range)" : "Hadir"} value={stats.present} color="text-emerald-400" bgColor="bg-emerald-500/10" />
                 <StatCard icon={AlertTriangle} label={period === 'custom' ? "Total Terlambat" : "Terlambat"} value={stats.late} color="text-amber-400" bgColor="bg-amber-500/10" />
+                <StatCard icon={LogOut} label={period === 'custom' ? "Total Cepat Pulang" : "Cepat Pulang"} value={stats.early_leave || 0} color="text-orange-400" bgColor="bg-orange-500/10" />
                 <StatCard icon={Clock} label={period === 'custom' ? "Absen (Estimasi)" : "Belum Absen"} value={stats.absent} color="text-red-400" bgColor="bg-red-500/10" />
             </div>
 

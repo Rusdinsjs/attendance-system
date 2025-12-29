@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { adminAPI } from '../../api/client';
-import { Download, Filter, Calendar, ArrowUp, ArrowDown } from 'lucide-react';
+import { Download, Filter, Calendar, ArrowUp, ArrowDown, Users, CheckCircle, Clock, AlertTriangle, LogOut } from 'lucide-react';
 import PageHeader from '../../components/PageHeader';
 import Pagination from '../../components/Pagination';
+import StatCard from '../../components/StatCard';
 import { formatTime, formatDate } from '../../utils/formatters';
 
 export default function ReportsView() {
@@ -211,29 +212,12 @@ export default function ReportsView() {
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className="bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-800">
-                    <p className="text-sm text-slate-400">Total Kehadiran</p>
-                    <p className="text-2xl font-bold text-white mt-1">{summary.total_present}</p>
-                </div>
-                <div className="bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-800">
-                    <p className="text-sm text-slate-400">Tepat Waktu</p>
-                    <p className="text-2xl font-bold text-emerald-400 mt-1">
-                        {summary.total_on_time}
-                    </p>
-                </div>
-                <div className="bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-800">
-                    <p className="text-sm text-slate-400">Terlambat</p>
-                    <p className="text-2xl font-bold text-amber-400 mt-1">
-                        {summary.total_late}
-                    </p>
-                </div>
-                <div className="bg-slate-900 rounded-xl p-6 shadow-sm border border-slate-800">
-                    <p className="text-sm text-slate-400">Cepat Pulang</p>
-                    <p className="text-2xl font-bold text-rose-400 mt-1">
-                        {summary.total_early_leave}
-                    </p>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+                <StatCard icon={Users} label="Total Karyawan" value={total} color="text-slate-200" bgColor="bg-slate-800" />
+                <StatCard icon={CheckCircle} label="Total Kehadiran" value={summary.total_present} color="text-cyan-400" bgColor="bg-cyan-500/10" />
+                <StatCard icon={Clock} label="Tepat Waktu" value={summary.total_on_time} color="text-emerald-400" bgColor="bg-emerald-500/10" />
+                <StatCard icon={AlertTriangle} label="Terlambat" value={summary.total_late} color="text-amber-400" bgColor="bg-amber-500/10" />
+                <StatCard icon={LogOut} label="Cepat Pulang" value={summary.total_early_leave} color="text-rose-400" bgColor="bg-rose-500/10" />
             </div>
 
             {/* Data Table */}
