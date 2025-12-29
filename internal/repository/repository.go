@@ -421,9 +421,17 @@ func (r *AttendanceRepository) FindAll(ctx context.Context, filters AttendanceFi
 	return attendances, total, err
 }
 
+// ReportStats contains attendance report statistics
+type ReportStats struct {
+	TotalPresent    int64 `json:"total_present"`
+	TotalOnTime     int64 `json:"total_on_time"`
+	TotalLate       int64 `json:"total_late"`
+	TotalEarlyLeave int64 `json:"total_early_leave"`
+}
+
 // GetReportStats calculates attendance statistics based on filters
-func (r *AttendanceRepository) GetReportStats(ctx context.Context, filters AttendanceFilters) (int64, int64, error) {
-	var totalLate, totalOnTime int64
+func (r *AttendanceRepository) GetReportStats(ctx context.Context, filters AttendanceFilters) (*ReportStats, error) {
+	stats := &ReportStats{}
 
 	// Base Query Construction (Similar to FindAll but no pagination/sort/status)
 	query := r.db.WithContext(ctx).Model(&models.Attendance{}).
@@ -450,17 +458,27 @@ func (r *AttendanceRepository) GetReportStats(ctx context.Context, filters Atten
 		query = query.Where("users.office_id = ?", filters.OfficeID)
 	}
 
-	// Count Late
-	if err := query.Session(&gorm.Session{}).Where("attendances.is_late = ?", true).Count(&totalLate).Error; err != nil {
-		return 0, 0, err
+	// Count Total Present (all check-ins)
+	if err := query.Session(&gorm.Session{}).Count(&stats.TotalPresent).Error; err != nil {
+		return nil, err
 	}
 
-	// Count On Time
-	if err := query.Session(&gorm.Session{}).Where("attendances.is_late = ?", false).Count(&totalOnTime).Error; err != nil {
-		return 0, 0, err
+	// Count Late (check_in_status = 'Terlambat')
+	if err := query.Session(&gorm.Session{}).Where("attendances.check_in_status = ?", "Terlambat").Count(&stats.TotalLate).Error; err != nil {
+		return nil, err
 	}
 
-	return totalLate, totalOnTime, nil
+	// Count On Time (check_in_status = 'Tepat Waktu')
+	if err := query.Session(&gorm.Session{}).Where("attendances.check_in_status = ?", "Tepat Waktu").Count(&stats.TotalOnTime).Error; err != nil {
+		return nil, err
+	}
+
+	// Count Early Leave (check_out_status = 'Cepat Pulang')
+	if err := query.Session(&gorm.Session{}).Where("attendances.check_out_status = ?", "Cepat Pulang").Count(&stats.TotalEarlyLeave).Error; err != nil {
+		return nil, err
+	}
+
+	return stats, nil
 }
 
 // DailyStat represents daily attendance statistics

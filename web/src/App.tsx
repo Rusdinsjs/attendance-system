@@ -2,18 +2,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './store/authStore';
-import Layout from './components/Layout';
-import LoginPage from './pages/LoginPage';
-import DashboardPage from '../src/pages/DashboardPage';
-import UsersPage from '../src/pages/UsersPage';
-import ReportsPage from '../src/pages/ReportsPage';
-import FaceVerificationPage from '../src/pages/FaceVerificationPage';
-import SettingsPage from '../src/pages/SettingsPage';
-import TransferRequestsPage from '../src/pages/TransferRequestsPage';
-import OfficePage from './pages/OfficePage';
-import KioskPage from './pages/KioskPage';
-import KioskManagementPage from './pages/admin/KioskManagementPage';
-import EmployeePage from './pages/EmployeePage';
+import { lazy, Suspense } from 'react';
+
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const KioskPage = lazy(() => import('./pages/KioskPage'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,28 +26,20 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/kiosk" element={<KioskPage />} />
-          <Route
-            path="/"
-            element={
-              <PrivateRoute>
-                <Layout />
-              </PrivateRoute>
-            }
-          >
-            <Route index element={<DashboardPage />} />
-            <Route path="users" element={<UsersPage />} />
-            <Route path="reports" element={<ReportsPage />} />
-            <Route path="face-verifications" element={<FaceVerificationPage />} />
-            <Route path="offices" element={<OfficePage />} />
-            <Route path="kiosks" element={<KioskManagementPage />} />
-            <Route path="transfer-requests" element={<TransferRequestsPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="employees" element={<EmployeePage />} />
-          </Route>
-        </Routes>
+        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-slate-950 text-slate-500">Loading...</div>}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/kiosk" element={<KioskPage />} />
+            <Route
+              path="/*"
+              element={
+                <PrivateRoute>
+                  <AdminDashboard />
+                </PrivateRoute>
+              }
+            />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   );

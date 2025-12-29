@@ -319,19 +319,21 @@ func (h *AttendanceHandler) GetAllToday(c *gin.Context) {
 	}
 
 	// Get aggregation stats
-	totalLate, totalOnTime, err := h.attendanceRepo.GetReportStats(c.Request.Context(), filters)
+	stats, err := h.attendanceRepo.GetReportStats(c.Request.Context(), filters)
 	if err != nil {
-		// Log error but don't fail the request? Or fail?
-		// Failing is probably safer to avoid misleading data.
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get attendance stats"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"attendances":   attendances,
-		"total":         total,
-		"total_late":    totalLate,
-		"total_on_time": totalOnTime,
+		"attendances": attendances,
+		"total":       total,
+		"summary": gin.H{
+			"total_present":     stats.TotalPresent,
+			"total_on_time":     stats.TotalOnTime,
+			"total_late":        stats.TotalLate,
+			"total_early_leave": stats.TotalEarlyLeave,
+		},
 	})
 }
 

@@ -37,10 +37,8 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
                 adminAPI.getOffices(),
                 employeeAPI.getEmployees()
             ]).then(([officeRes, empRes]) => {
-                setOffices(officeRes.data.offices || []);
-                // Filter employees who don't have a user account yet (optional, or just show all)
-                // Ideally backend should provide a filtered list, but for now show all active employees
-                setEmployees(empRes.data.employees || []);
+                setOffices(Array.isArray(officeRes.data.offices) ? officeRes.data.offices : []);
+                setEmployees(Array.isArray(empRes.data.employees) ? empRes.data.employees : []);
             }).catch(err => console.error('Failed to fetch data:', err));
         }
     }, [isOpen]);
@@ -322,10 +320,10 @@ export default function UserFormModal({ isOpen, onClose, user, onSubmit, isLoadi
                                     <div className="flex justify-between items-center mb-2">
                                         <span className="text-sm text-slate-400">Status Verifikasi Wajah</span>
                                         <span className={`text-xs px-2 py-0.5 rounded-full border ${user.face_verification_status === 'verified'
-                                                ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                                : user.face_verification_status === 'rejected'
-                                                    ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                                                    : 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+                                            ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                            : user.face_verification_status === 'rejected'
+                                                ? 'bg-red-500/20 text-red-400 border-red-500/30'
+                                                : 'bg-slate-500/20 text-slate-400 border-slate-500/30'
                                             }`}>
                                             {user.face_verification_status?.toUpperCase() || 'NONE'}
                                         </span>
