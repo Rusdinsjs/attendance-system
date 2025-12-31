@@ -149,7 +149,7 @@ func main() {
 		// Generate unique identifiers
 		nikSuffix := rand.Intn(999999999)
 		nik := fmt.Sprintf("7405%012d", nikSuffix) // 7405 = Kode Kolaka
-		employeeID := fmt.Sprintf("EMP-%04d", 1000+i)
+		employeeID := fmt.Sprintf("E%04d", 1000+i)
 		email := fmt.Sprintf("%s.%s%d@sjs.com", strings.ToLower(firstName), strings.ToLower(lastName), rand.Intn(100))
 
 		// Random other data

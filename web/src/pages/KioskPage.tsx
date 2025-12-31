@@ -8,6 +8,8 @@ import {
     Wifi, WifiOff, AlertCircle
 } from 'lucide-react';
 import { useKioskOffline } from '../hooks/useKioskOffline';
+import * as faceapi from 'face-api.js';
+import { compareFaceEmbeddings } from '../services/kioskOfflineService';
 
 // API base URL
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -90,6 +92,24 @@ const KioskPage: React.FC = () => {
         adminCode: adminPIN || '123456',
         autoSync: true,
     });
+
+    // Load face-api models (using tiny models for faster detection)
+    useEffect(() => {
+        const loadModels = async () => {
+            const MODEL_URL = '/models';
+            try {
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+                ]);
+                console.log('Face-api models loaded (tiny detector)');
+            } catch (err) {
+                console.error('Failed to load face-api models', err);
+            }
+        };
+        loadModels();
+    }, []);
 
     // Fetch Settings & WebSocket
     useEffect(() => {
@@ -194,7 +214,7 @@ const KioskPage: React.FC = () => {
                 }
 
                 if (scannerRef.current) {
-                    await scannerRef.current.clear();
+                    await scannerRef.current.stop();
                     scannerRef.current = null;
                 }
                 setStep('verify');
@@ -202,7 +222,9 @@ const KioskPage: React.FC = () => {
             }
 
             // ONLINE MODE: Use server API
-            const response = await fetch(`${API_URL}/api/kiosk/scan`, {
+            const apiUrl = `${API_URL}/api/kiosk/scan`;
+
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ employee_id: employeeId }),
@@ -216,7 +238,23 @@ const KioskPage: React.FC = () => {
                 return;
             }
 
-            setEmployee(data);
+            // Map response to Employee interface
+            const employeeData: Employee = {
+                id: data.id || '',
+                employee_id: data.employee_id,
+                name: data.name,
+                has_face_data: data.has_face_data,
+                today_status: data.today_status,
+            };
+
+            // VALIDATION: Prevent action if already checked out
+            if (employeeData.today_status === 'checked_out') {
+                setErrorMsg('Anda sudah Check-Out hari ini.');
+                setStep('error');
+                return;
+            }
+
+            setEmployee(employeeData);
 
             if (!data.has_face_data) {
                 setErrorMsg('Anda belum mendaftarkan wajah. Silakan hubungi Admin.');
@@ -225,11 +263,14 @@ const KioskPage: React.FC = () => {
             }
 
             if (scannerRef.current) {
-                await scannerRef.current.clear();
+                await scannerRef.current.stop();
                 scannerRef.current = null;
             }
             setStep('verify');
-        } catch (error) {
+        } catch (error: any) {
+            const errMsg = error?.message || String(error);
+            console.error('[Kiosk] Scan error:', error);
+
             // If network error and offline ready, try offline mode
             if (isOfflineReady) {
                 console.log('[Kiosk] Network error - falling back to offline mode');
@@ -247,7 +288,7 @@ const KioskPage: React.FC = () => {
 
                     if (hasFaceData) {
                         if (scannerRef.current) {
-                            await scannerRef.current.clear();
+                            await scannerRef.current.stop();
                             scannerRef.current = null;
                         }
                         setStep('verify');
@@ -255,7 +296,7 @@ const KioskPage: React.FC = () => {
                     }
                 }
             }
-            setErrorMsg('Gagal terhubung ke server');
+            setErrorMsg(`Gagal terhubung ke server: ${errMsg}`);
             setStep('error');
         } finally {
             setIsProcessing(false);
@@ -520,29 +561,90 @@ const KioskPage: React.FC = () => {
                     return;
                 }
 
-                // Capture current frame and extract embedding
-                // Note: In a full implementation, we would extract embedding from webcam frame
-                // For now, we'll use a simplified verification approach
+                // Verify face with face-api.js
+                const imageSrc = webcamRef.current.getScreenshot();
+                if (!imageSrc) {
+                    setErrorMsg('Gagal mengambil foto');
+                    setStep('error');
+                    return;
+                }
 
-                // For offline mode, we simulate face verification and record attendance
-                const confidence = 0.85; // Simulated confidence for offline mode
+                try {
+                    // Create an HTMLImageElement from base64
+                    const img = document.createElement('img');
+                    img.src = imageSrc;
 
-                // Record attendance locally
-                await recordOfflineAttendance(
-                    employee.employee_id,
-                    action as 'check-in' | 'check-out',
-                    confidence
-                );
+                    // Detect face and compute embedding using TinyFaceDetector (faster)
+                    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 });
+                    const detection = await faceapi.detectSingleFace(img, options).withFaceLandmarks(true).withFaceDescriptor();
 
-                setMessage(action === 'check-in'
-                    ? 'Check-in tersimpan (offline)'
-                    : 'Check-out tersimpan (offline)');
-                setStep('success');
+                    if (!detection) {
+                        setErrorMsg('Wajah tidak terdeteksi (Offline)');
+                        setStep('error');
+                        return;
+                    }
+
+                    const probeEmbedding = Array.from(detection.descriptor);
+                    const matchResult = compareFaceEmbeddings(probeEmbedding, offlineEmployee.face_embeddings);
+
+                    if (!matchResult.isMatch) {
+                        setErrorMsg('Wajah tidak cocok (Offline)');
+                        setStep('error');
+                        return;
+                    }
+
+                    // Success!
+                    await recordOfflineAttendance(
+                        employee.employee_id,
+                        action as 'check-in' | 'check-out',
+                        matchResult.confidence
+                    );
+
+                    setMessage(action === 'check-in'
+                        ? 'Check-in tersimpan (offline)'
+                        : 'Check-out tersimpan (offline)');
+                    setStep('success');
+                    return;
+
+                } catch (offlineErr) {
+                    console.error('Offline verification failed:', offlineErr);
+                    setErrorMsg('Gagal verifikasi offline');
+                    setStep('error');
+                    return;
+                }
+            }
+
+            // ONLINE MODE: Capture webcam image and verify face first
+            const imageSrc = webcamRef.current.getScreenshot();
+            if (!imageSrc) {
+                setErrorMsg('Gagal mengambil foto dari kamera');
+                setStep('error');
                 return;
             }
 
-            // ONLINE MODE: Use server API
-            const response = await fetch(`${API_URL}/api/kiosk/${action}`, {
+            // Step 1: Verify face with server
+            setMessage('Memverifikasi wajah...');
+            const verifyResponse = await fetch(`${API_URL}/api/kiosk/verify-face-image`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    employee_id: employee.employee_id,
+                    image_base64: imageSrc,
+                }),
+            });
+
+            const verifyData = await verifyResponse.json();
+
+            if (!verifyResponse.ok || !verifyData.success) {
+                setErrorMsg(verifyData.error || verifyData.message || 'Verifikasi wajah gagal');
+                setStep('error');
+                return;
+            }
+
+            // Face verified! Now proceed with check-in/out
+            setMessage('Wajah terverifikasi. Menyimpan absensi...');
+
+            const attendanceResponse = await fetch(`${API_URL}/api/kiosk/${action}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -551,15 +653,15 @@ const KioskPage: React.FC = () => {
                 }),
             });
 
-            const data = await response.json();
+            const attendanceData = await attendanceResponse.json();
 
-            if (!response.ok) {
-                setErrorMsg(data.error || 'Gagal melakukan absensi');
+            if (!attendanceResponse.ok) {
+                setErrorMsg(attendanceData.error || 'Gagal melakukan absensi');
                 setStep('error');
                 return;
             }
 
-            setMessage(data.message);
+            setMessage(attendanceData.message);
             setStep('success');
         } catch (error) {
             // If network error and offline ready, try offline mode

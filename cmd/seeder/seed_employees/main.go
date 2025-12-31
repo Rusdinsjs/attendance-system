@@ -72,7 +72,7 @@ func main() {
 		// Ensure uniqueness for NIK and EmployeeID simulation
 		nikSuffix := rand.Intn(999999)
 		nik := fmt.Sprintf("320%013d", nikSuffix) // Example 16 digit NIK
-		employeeIDStr := fmt.Sprintf("EMP-%04d%d", i+100, rand.Intn(99))
+		employeeIDStr := fmt.Sprintf("E%04d%d", i+100, rand.Intn(99))
 
 		// Email
 		email := fmt.Sprintf("%s.%s%d@example.com", strings.ToLower(firstName), strings.ToLower(lastName), rand.Intn(1000))
