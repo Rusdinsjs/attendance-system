@@ -264,6 +264,8 @@ const KioskPage: React.FC = () => {
 
     // Initialize QR Scanner
     useEffect(() => {
+        let isScanning = false;
+        
         if (step === 'scan' && !showSetup && !cameraError) {
             // Check permissions first
             navigator.mediaDevices.getUserMedia({ video: true })
@@ -285,25 +287,36 @@ const KioskPage: React.FC = () => {
                 (decodedText) => {
                     handleQRScan(decodedText);
                 },
-                (_) => {
+                () => {
                     // Ignore per-frame errors
                 }
-            ).catch((err) => {
+            ).then(() => {
+                isScanning = true;
+            }).catch((err) => {
                 console.error("Error starting scanner", err);
                 setCameraError(true);
+                scannerRef.current = null;
             });
         }
 
         return () => {
-            if (scannerRef.current) {
-                // Determine if it's running before stopping to avoid errors
-                // However Html5Qrcode doesn't expose isRunning easily, so we try catch stop
-                scannerRef.current.stop().then(() => {
-                    scannerRef.current?.clear();
-                }).catch((err: any) => {
-                    console.log("Failed to stop scanner", err);
-                });
+            const currentScanner = scannerRef.current;
+            if (currentScanner) {
                 scannerRef.current = null;
+                // Only try to stop if scanner exists
+                try {
+                    currentScanner.stop().then(() => {
+                        try {
+                            currentScanner.clear();
+                        } catch (e) {
+                            // Ignore clear errors
+                        }
+                    }).catch(() => {
+                        // Scanner was not running, that's fine
+                    });
+                } catch (e) {
+                    // Ignore any synchronous errors
+                }
             }
         };
     }, [step, showSetup, cameraError, handleQRScan]);
