@@ -455,13 +455,20 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		user.OfficeLat = office.Latitude
 		user.OfficeLong = office.Longitude
 		user.AllowedRadius = office.Radius
+		user.Office = nil // Clear preloaded office to avoid GORM confusion
+		
+		log.Printf("[UpdateUser] Updating office for user %s to office %s", userID, officeUUID)
 	}
 
-	if err := h.userRepo.Update(c.Request.Context(), user); err != nil {
+	// Use Select to explicitly specify which fields to update
+	if err := h.userRepo.UpdateWithSelect(c.Request.Context(), user); err != nil {
 		// Simplify error handling for now
+		log.Printf("[UpdateUser] Error updating user: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user: " + err.Error()})
 		return
 	}
+	
+	log.Printf("[UpdateUser] Successfully updated user %s, office_id: %v", userID, user.OfficeID)
 
 	// Broadcast update to client (mobile/web)
 	if h.wsHub != nil {

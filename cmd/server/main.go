@@ -169,6 +169,7 @@ func main() {
 		{
 			kiosk.POST("/scan", kioskHandler.ScanQR)
 			kiosk.POST("/verify-face", kioskHandler.VerifyFace)
+			kiosk.POST("/verify-face-image", kioskHandler.VerifyFaceImage)
 			kiosk.POST("/check-in", kioskHandler.KioskCheckIn)
 			kiosk.POST("/check-out", kioskHandler.KioskCheckOut)
 			kiosk.GET("/status/:employee_id", kioskHandler.GetKioskStatus)

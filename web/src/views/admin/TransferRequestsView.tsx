@@ -37,10 +37,16 @@ export default function TransferRequestsView() {
     // Mutation to update user's office
     const updateMutation = useMutation({
         mutationFn: async ({ userId, officeId }: { userId: string; officeId: string }) => {
-            return adminAPI.updateUser(userId, { office_id: officeId });
+            console.log('[TransferRequest] Sending update:', { userId, officeId });
+            const response = await adminAPI.updateUser(userId, { office_id: officeId });
+            console.log('[TransferRequest] Response:', response.data);
+            return response;
         },
-        onSuccess: (_, variables) => {
+        onSuccess: (response, variables) => {
+            console.log('[TransferRequest] Success:', response.data);
+            // Invalidate both user queries to ensure data refresh
             queryClient.invalidateQueries({ queryKey: ['users'] });
+            queryClient.invalidateQueries({ queryKey: ['users-for-transfer'] });
             const office = offices.find(o => o.id === variables.officeId);
             setSuccessMessage(`${selectedUser?.name} berhasil dipindahkan ke ${office?.name}`);
             setSelectedUser(null);
@@ -48,19 +54,42 @@ export default function TransferRequestsView() {
             setReason('');
             setTimeout(() => setSuccessMessage(''), 5000);
         },
+        onError: (error: any) => {
+            console.error('[TransferRequest] Error:', error);
+            const errorMsg = error?.response?.data?.error || error?.message || 'Unknown error';
+            alert(`Gagal memindahkan karyawan: ${errorMsg}`);
+        },
     });
 
     const handleSubmit = async () => {
+        console.log('[TransferRequest] handleSubmit called');
+        console.log('[TransferRequest] selectedUser:', selectedUser);
+        console.log('[TransferRequest] selectedOffice:', selectedOffice);
+
         if (!selectedUser || !selectedOffice) {
+            console.log('[TransferRequest] Missing user or office');
             alert('Pilih karyawan dan kantor tujuan');
             return;
         }
 
+        // Don't allow transfer to same office (handle both office_id and office?.id)
+        const currentOfficeId = selectedUser.office_id || selectedUser.office?.id;
+        console.log('[TransferRequest] currentOfficeId:', currentOfficeId, 'targetOfficeId:', selectedOffice);
+
+        if (currentOfficeId === selectedOffice) {
+            console.log('[TransferRequest] Same office, aborting');
+            alert('Karyawan sudah berada di kantor tersebut');
+            return;
+        }
+
+        console.log('[TransferRequest] Starting mutation...');
         setIsSubmitting(true);
         try {
             await updateMutation.mutateAsync({ userId: selectedUser.id, officeId: selectedOffice });
+            console.log('[TransferRequest] Mutation completed successfully');
         } catch (error) {
-            alert('Gagal memindahkan karyawan');
+            // Error already handled in onError
+            console.error('[TransferRequest] Submit error:', error);
         } finally {
             setIsSubmitting(false);
         }

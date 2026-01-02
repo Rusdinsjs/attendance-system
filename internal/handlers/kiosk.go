@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,13 +10,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/attendance-system/internal/models"
 	"github.com/attendance-system/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"strconv"
 )
 
 // KioskHandler handles kiosk-related endpoints
@@ -170,6 +172,140 @@ func (h *KioskHandler) VerifyFace(c *gin.Context) {
 		"success":  matched,
 		"distance": minDistance,
 		"message":  ternary(matched, "Wajah terverifikasi", "Wajah tidak cocok"),
+	})
+}
+
+// VerifyFaceImageRequest represents face verification with base64 image
+type VerifyFaceImageRequest struct {
+	EmployeeID  string `json:"employee_id" binding:"required"`
+	ImageBase64 string `json:"image_base64" binding:"required"`
+}
+
+// VerifyFaceImage verifies face from base64 webcam capture
+// POST /api/kiosk/verify-face-image
+func (h *KioskHandler) VerifyFaceImage(c *gin.Context) {
+	var req VerifyFaceImageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Find user
+	user, err := h.userRepo.FindByEmployeeID(c.Request.Context(), req.EmployeeID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "User not found"})
+		return
+	}
+
+	if len(user.FaceEmbeddings) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "No face data registered",
+		})
+		return
+	}
+
+	// Decode base64 image - Remove data URL prefix if present
+	imageData := req.ImageBase64
+	if strings.HasPrefix(imageData, "data:image/jpeg;base64,") {
+		imageData = strings.TrimPrefix(imageData, "data:image/jpeg;base64,")
+	} else if strings.HasPrefix(imageData, "data:image/png;base64,") {
+		imageData = strings.TrimPrefix(imageData, "data:image/png;base64,")
+	} else if strings.HasPrefix(imageData, "data:image/webp;base64,") {
+		imageData = strings.TrimPrefix(imageData, "data:image/webp;base64,")
+	}
+	
+	decodedImage, err := base64.StdEncoding.DecodeString(imageData)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid base64 image"})
+		return
+	}
+
+	// Save to temp file
+	tempDir := filepath.Join("uploads", "temp")
+	os.MkdirAll(tempDir, 0755)
+	tempFile := filepath.Join(tempDir, fmt.Sprintf("verify_%s_%d.jpg", user.ID.String(), time.Now().UnixNano()))
+	
+	if err := os.WriteFile(tempFile, decodedImage, 0644); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to save temp image"})
+		return
+	}
+	defer os.Remove(tempFile) // Clean up after
+
+	// Call Face Service to extract embedding
+	faceServiceURL := os.Getenv("FACE_SERVICE_URL")
+	if faceServiceURL == "" {
+		faceServiceURL = "http://localhost:5001"
+	}
+
+	extractReqBody, _ := json.Marshal(map[string]interface{}{
+		"image_paths": []string{"/" + tempFile},
+	})
+
+	extractResp, err := http.Post(
+		faceServiceURL+"/extract-embeddings",
+		"application/json",
+		bytes.NewBuffer(extractReqBody),
+	)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "Face service unavailable"})
+		return
+	}
+	defer extractResp.Body.Close()
+
+	var extractResult struct {
+		Success    bool        `json:"success"`
+		Embeddings [][]float64 `json:"embeddings"`
+		Error      string      `json:"error"`
+	}
+	
+	respBody, _ := io.ReadAll(extractResp.Body)
+	if err := json.Unmarshal(respBody, &extractResult); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to parse face service response"})
+		return
+	}
+
+	if !extractResult.Success || len(extractResult.Embeddings) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "No face detected in image. " + extractResult.Error,
+		})
+		return
+	}
+
+	// Compare extracted embedding with stored embeddings
+	probeEmbedding := extractResult.Embeddings[0]
+	
+	// Get threshold from settings
+	thresholdSetting, _ := h.settingsRepo.GetByKey(c.Request.Context(), "face_verification_threshold")
+	threshold := 0.6
+	if thresholdSetting != nil {
+		if t, err := strconv.ParseFloat(thresholdSetting.Value, 64); err == nil {
+			threshold = t
+		}
+	}
+	
+	minDistance := float64(999)
+	for _, storedEmbed := range user.FaceEmbeddings {
+		distance := euclideanDistance(probeEmbedding, storedEmbed)
+		if distance < minDistance {
+			minDistance = distance
+		}
+	}
+
+	matched := minDistance < threshold
+	similarity := 1 - minDistance
+	if similarity < 0 {
+		similarity = 0
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":    matched,
+		"match":      matched,
+		"distance":   minDistance,
+		"similarity": similarity,
+		"threshold":  threshold,
+		"message":    ternary(matched, "Wajah terverifikasi", "Wajah tidak cocok"),
 	})
 }
 

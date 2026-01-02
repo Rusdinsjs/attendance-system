@@ -81,6 +81,13 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return r.db.WithContext(ctx).Save(user).Error
 }
 
+// UpdateWithSelect updates a user with explicit column selection to avoid GORM association issues
+func (r *UserRepository) UpdateWithSelect(ctx context.Context, user *models.User) error {
+	return r.db.WithContext(ctx).Model(user).
+		Select("name", "email", "role", "is_active", "office_id", "office_lat", "office_long", "allowed_radius", "password_hash", "avatar_url", "face_verification_status", "face_embeddings", "updated_at").
+		Updates(user).Error
+}
+
 // UpdateFaceEmbeddings updates user's face embeddings
 func (r *UserRepository) UpdateFaceEmbeddings(ctx context.Context, userID uuid.UUID, embeddings models.FaceEmbeddings) error {
 	return r.db.WithContext(ctx).Model(&models.User{}).
