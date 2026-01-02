@@ -305,8 +305,8 @@ const KioskPage: React.FC = () => {
 
     // Initialize QR Scanner
     useEffect(() => {
-        let isScanning = false;
-        
+
+
         if (step === 'scan' && !showSetup && !cameraError) {
             // Check permissions first
             navigator.mediaDevices.getUserMedia({ video: true })
@@ -332,7 +332,7 @@ const KioskPage: React.FC = () => {
                     // Ignore per-frame errors
                 }
             ).then(() => {
-                isScanning = true;
+                // Scanner started
             }).catch((err) => {
                 console.error("Error starting scanner", err);
                 setCameraError(true);
@@ -597,7 +597,7 @@ const KioskPage: React.FC = () => {
                         return;
                     }
 
-                    const probeEmbedding = Array.from(detection.descriptor);
+                    const probeEmbedding = Array.from(detection.descriptor) as number[];
                     const matchResult = compareFaceEmbeddings(probeEmbedding, offlineEmployee.face_embeddings);
 
                     if (!matchResult.isMatch) {
